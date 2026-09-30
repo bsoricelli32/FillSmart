@@ -4,6 +4,7 @@ import { useStore } from "../lib/store";
 import { gradeName, supabase } from "../lib/supabase";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
 import { fitHorizons, pathAt, type Obs } from "../lib/forecast";
+import { PriceChart } from "../components/PriceChart";
 
 type Pt = { t: number; v: number; band?: number };
 const DAY = 86400000;
@@ -86,7 +87,7 @@ export default function Outlook() {
       }
       const localDaily: Pt[] = [...days.entries()].sort((a, b) => a[0] - b[0]).map(([t, v]) => ({ t, v: median(v) }));
       const hist: Pt[] = daily && localDaily.length >= 4 ? localDaily
-        : R.filter((p) => p.t >= now - (daily ? 42 : 84) * DAY).map((p) => ({ t: p.t, v: p.v + offset }));
+        : R.filter((p) => p.t >= now - (daily ? 42 : 182) * DAY).map((p) => ({ t: p.t, v: p.v + offset }));
       hist.push({ t: now, v: local ?? denverNow });
 
       const today = local ?? denverNow;
@@ -129,38 +130,6 @@ export default function Outlook() {
     const conf = recent.length >= 6 && f.r2 > 0.6 ? "Medium" : "Low";
     return { hist, fc, today, later, change, range: null, conf, signal: true, local: true, market: false, enough: true as const };
   }, [rows, daily, market]);
-
-  // Chart geometry
-  const W = 330, H = 170, X0 = 40, X1 = 324, Y0 = 10, Y1 = 142;
-  let chart: JSX.Element | null = null;
-  if (model?.enough) {
-    const all = [...model.hist, ...model.fc];
-    const spread = (p: Pt, k: number) => p.band ?? 0.006 * k;
-    const pad = (p: Pt) => p.band ?? 0;
-    const lo = Math.min(...all.map((p) => p.v - pad(p))) - 0.04, hi = Math.max(...all.map((p) => p.v + pad(p))) + 0.04;
-    const t0 = all[0].t, t1 = all[all.length - 1].t;
-    const x = (t: number) => X0 + ((X1 - X0) * (t - t0)) / Math.max(1, t1 - t0);
-    const y = (v: number) => Y1 - ((Y1 - Y0) * (v - lo)) / (hi - lo);
-    const last = model.hist[model.hist.length - 1];
-    const fcLine = [last, ...model.fc];
-    const band = [...fcLine.map((p, k) => `${x(p.t)},${y(p.v + spread(p, k))}`), ...fcLine.map((p, k) => `${x(p.t)},${y(p.v - spread(p, k))}`).reverse()].join(" ");
-    const fmt = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    chart = (
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${gradeName(grade)} price history with a dashed trend estimate`}>
-        {[hi - 0.02, lo + 0.02].map((v, i) => (
-          <g key={i}><path d={`M36 ${y(v)} H330`} stroke="#DDD7CD" /><text x="0" y={y(v) + 4} fill="#5E5750" fontSize="11">${v.toFixed(2)}</text></g>
-        ))}
-        <polygon points={band} fill="rgba(194,31,26,.12)" />
-        <line x1={x(last.t)} y1="6" x2={x(last.t)} y2="144" stroke="#CBC4B9" />
-        <text x={x(last.t)} y="163" fill="#2B2724" fontWeight="700" fontSize="12" textAnchor="middle">Latest</text>
-        <text x={X0} y="163" fill="#5E5750" fontSize="11">{fmt(t0)}</text>
-        <text x={X1 + 4} y="163" fill="#5E5750" fontSize="11" textAnchor="end">{fmt(t1)}</text>
-        <polyline points={model.hist.map((p) => `${x(p.t)},${y(p.v)}`).join(" ")} fill="none" stroke="#2B2724" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        <polyline points={fcLine.map((p) => `${x(p.t)},${y(p.v)}`).join(" ")} fill="none" stroke="#C21F1A" strokeWidth="2.5" strokeDasharray="6 5" strokeLinecap="round" />
-        <circle cx={x(last.t)} cy={y(last.v)} r="6" fill="#fff" stroke="#C21F1A" strokeWidth="3" />
-      </svg>
-    );
-  }
 
   const noSignal = model?.enough && !model.signal;
   const rising = model?.enough && !noSignal && model.change > 1;
@@ -205,9 +174,11 @@ export default function Outlook() {
         {model?.enough && (
           <>
             <Section id="ch" title="Price trend" hint={model.market
-              ? `Dark line is ${model.local ? "the price near you" : "the Denver average"}. ${model.signal ? "Red dashes are the forecast from wholesale prices" : "Red dashes hold today's price"}, with the likely range shaded.`
-              : "Dark line is the middle price drivers saw. Red dashes are a simple trend estimate, with the likely range shaded."}>
-              <div className="raised-sm" style={{ borderRadius: 22, padding: "12px 10px 6px" }}>{chart}</div>
+              ? `Dark line is ${model.local ? "the price near you" : "the Denver average"}. ${model.signal ? "Red dashes are the forecast from wholesale prices" : "Red dashes hold today's price"}, with the likely range shaded. Drag across it to read any point.`
+              : "Dark line is the middle price drivers saw. Red dashes are a simple trend estimate, with the likely range shaded. Drag across it to read any point."}>
+              <div className="raised-sm" style={{ borderRadius: 22, padding: "12px 10px 6px" }}>
+                <PriceChart hist={model.hist} fc={model.fc} label={`${gradeName(grade)} price history with a dashed forecast`} />
+              </div>
             </Section>
             <dl style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
               <div className="raised-sm" style={{ borderRadius: 18, padding: "10px 14px" }}><dt style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>EXPECTED CHANGE</dt><dd className="tnum" style={{ fontSize: 17, fontWeight: 800 }}>{model.change > 0 ? "+" : ""}{model.change}¢</dd>{model.range && <dd className="tnum" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>Range {model.range[0] > 0 ? "+" : ""}{model.range[0]} to {model.range[1] > 0 ? "+" : ""}{model.range[1]}¢</dd>}</div>

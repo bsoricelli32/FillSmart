@@ -1,16 +1,39 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowsClockwise, CaretRight, MagnifyingGlass, MapPin, MapTrifold, SortAscending } from "@phosphor-icons/react";
 import { useStore, priceFor } from "../lib/store";
-import { GRADES, gradeName } from "../lib/supabase";
+import { callFn, Grade, GRADES, gradeName, Station } from "../lib/supabase";
 import { timeAgo, sourceLabel } from "../lib/util";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
+import { PlaceSheet } from "../components/PlaceSheet";
 
 export default function Prices() {
-  const { prefs, setPrefs, stations, stationsLoading, stationsError, googleConfigured, reloadStations, loc, locate } = useStore();
+  const { prefs, setPrefs, stations, stationsLoading, stationsError, googleConfigured, reloadStations, loc, setSearched } = useStore();
   const grade = prefs.preferred_grade;
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"price" | "distance">("price");
+  const [picking, setPicking] = useState(false);
+
+  // Search stations anywhere by name (not limited to nearby), after a short pause in typing.
+  const [found, setFound] = useState<Station[]>([]);
+  const [finding, setFinding] = useState(false);
+  const [findErr, setFindErr] = useState(false);
+  const term = q.trim();
+  useEffect(() => {
+    if (term.length < 3) { setFound([]); setFindErr(false); return; }
+    let live = true;
+    const t = window.setTimeout(async () => {
+      setFinding(true);
+      const res = await callFn<{ stations: Station[] }>("search-places", { mode: "stations", q: term, lat: loc.lat, lng: loc.lng });
+      if (!live) return;
+      setFinding(false);
+      if (res.error) { setFindErr(true); setFound([]); return; }
+      setFindErr(false);
+      setFound(res.data!.stations);
+      setSearched(res.data!.stations);
+    }, 700);
+    return () => { live = false; window.clearTimeout(t); };
+  }, [term, loc.lat, loc.lng, setSearched]);
 
   const list = useMemo(() => {
     const f = stations.filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()) || (s.address ?? "").toLowerCase().includes(q.toLowerCase()));
@@ -69,7 +92,7 @@ export default function Prices() {
 
         <Section
           id="near"
-          title={`${gradeName(grade)} near you`}
+          title={`${gradeName(grade)} near ${loc.manual ? loc.label : "you"}`}
           hint={sortBy === "price" ? "Cheapest first. Tap a station for all prices and directions." : "Closest first. Tap a station for all prices and directions."}
           right={<button className="nb xs" aria-label="Refresh prices" onClick={() => reloadStations(true)}>{stationsLoading ? <span className="spin" /> : <ArrowsClockwise size={18} />}</button>}
         >
@@ -77,33 +100,36 @@ export default function Prices() {
           {!googleConfigured && !stationsError && (
             <p className="hint">Google prices aren't switched on yet. You'll see stations that you and your invites have scanned.</p>
           )}
-          {!stationsLoading && list.length === 0 && !stationsError && (
+          {!stationsLoading && list.length === 0 && !stationsError && !term && (
             <div className="raised-sm empty"><p>No stations found here yet. Scan your next fill-up to add the first price.</p></div>
           )}
+          {term && list.length === 0 && !stationsError && <p className="hint">No nearby stations match "{term}".</p>}
           <ol style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {list.map((s) => {
-              const p = s.prices[grade];
-              const best = cheapest && s.place_id === cheapest.place_id && sortBy === "price";
-              return (
-                <li key={s.place_id}>
-                  <Link to={`/station/${encodeURIComponent(s.place_id)}`} className={"srow" + (best ? " tint" : "")}>
-                    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                      <span style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
-                      <span style={{ fontSize: 13, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.distance_mi} mi{p ? ` · ${timeAgo(p.updated_at)} · ${sourceLabel(p.source)}` : " · no price yet"}</span>
-                    </div>
-                    {p ? <PumpPrice price={p.price} size={18} /> : <span style={{ fontSize: 14, color: "var(--ink-2)" }}>--</span>}
-                    <span className={"nb xs" + (best ? " accent" : "")} aria-hidden><CaretRight size={18} /></span>
-                  </Link>
-                </li>
-              );
-            })}
+            {list.map((s) => (
+              <li key={s.place_id}><StationRow s={s} grade={grade} best={!!cheapest && s.place_id === cheapest.place_id && sortBy === "price"} /></li>
+            ))}
           </ol>
         </Section>
+
+        {term.length >= 3 && (
+          <Section
+            id="any"
+            title={`"${term}" everywhere`}
+            hint="Stations anywhere with this name, closest first. Tap one for prices and directions."
+            right={finding ? <span className="spin" aria-label="Searching" /> : undefined}
+          >
+            {findErr && <p className="err">Search isn't working right now. Try again.</p>}
+            {!finding && !findErr && found.length === 0 && <p className="hint">No stations found.</p>}
+            <ol style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {found.map((s) => <li key={s.place_id}><StationRow s={s} grade={grade} place /></li>)}
+            </ol>
+          </Section>
+        )}
       </main>
 
       <div className="searchdock glass" role="search">
-        <button className="loc" onClick={locate} aria-label={loc.precise ? "Update my location" : "Use my location"}>
-          <MapPin size={18} weight="fill" color="#C21F1A" aria-hidden />{loc.label}
+        <button className="loc" onClick={() => setPicking(true)} aria-label={`Location: ${loc.label}. Change location`}>
+          <MapPin size={18} weight="fill" color="#C21F1A" aria-hidden /><span>{loc.label}</span>
         </button>
         <label className="search">
           <MagnifyingGlass size={18} aria-hidden />
@@ -112,6 +138,25 @@ export default function Prices() {
         </label>
       </div>
       <TabDock />
+      {picking && <PlaceSheet onClose={() => setPicking(false)} />}
     </div>
+  );
+}
+
+function StationRow({ s, grade, best = false, place = false }: { s: Station; grade: Grade; best?: boolean; place?: boolean }) {
+  const p = s.prices[grade];
+  // For search results, show the town so far-away matches are clear.
+  const parts = (s.address ?? "").split(",").map((x) => x.trim()).filter((x) => x && x !== "USA");
+  const town = place && parts.length >= 2 ? parts[parts.length - 2] : null;
+  const where = [`${s.distance_mi} mi`, town].filter(Boolean).join(" · ");
+  return (
+    <Link to={`/station/${encodeURIComponent(s.place_id)}`} className={"srow" + (best ? " tint" : "")}>
+      <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <span style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
+        <span style={{ fontSize: 13, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{where}{p ? ` · ${timeAgo(p.updated_at)} · ${sourceLabel(p.source)}` : " · no price yet"}</span>
+      </div>
+      {p ? <PumpPrice price={p.price} size={18} /> : <span style={{ fontSize: 14, color: "var(--ink-2)" }}>--</span>}
+      <span className={"nb xs" + (best ? " accent" : "")} aria-hidden><CaretRight size={18} /></span>
+    </Link>
   );
 }

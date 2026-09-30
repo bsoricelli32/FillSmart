@@ -8,8 +8,9 @@ import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
 
 export default function Station() {
   const { placeId } = useParams();
-  const { stations, prefs, vehicles, reloadStations } = useStore();
-  const s = stations.find((x) => x.place_id === decodeURIComponent(placeId ?? ""));
+  const { stations, searched, prefs, vehicles, reloadStations } = useStore();
+  const id = decodeURIComponent(placeId ?? "");
+  const s = stations.find((x) => x.place_id === id) ?? searched.find((x) => x.place_id === id);
   const grade = prefs.preferred_grade;
   const [gal, setGal] = useState(() => Math.round((vehicles[0]?.tank_gal ?? 14) * 0.8));
   const [reporting, setReporting] = useState(false);
