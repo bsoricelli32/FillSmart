@@ -3,7 +3,7 @@
 // data and skips work if it already ran in the last hour, so extra calls are harmless.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const START = "2023-01-01";
+const START = "2016-01-01"; // long history so the forecast can learn seasonal patterns
 
 // Retail, weekly. Denver for gasoline grades, Rocky Mountain region for diesel (no Denver series).
 const RETAIL = [
@@ -46,7 +46,9 @@ Deno.serve(async () => {
   try {
     const rows = [
       ...(await pull("petroleum/pri/gnd", "weekly", RETAIL, key)),
-      ...(await pull("petroleum/pri/spt", "daily", SPOT, key)),
+      // One request per spot series: each is ~2,700 daily rows and EIA caps a request at 5,000.
+      ...(await pull("petroleum/pri/spt", "daily", [SPOT[0]], key)),
+      ...(await pull("petroleum/pri/spt", "daily", [SPOT[1]], key)),
     ];
     const now = new Date().toISOString();
     for (let i = 0; i < rows.length; i += 1000) {
