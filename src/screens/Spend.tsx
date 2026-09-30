@@ -48,8 +48,11 @@ export default function Spend() {
     return { spent, gallons, count: inRange.length, bars, compare };
   }, [fillups, month, period]);
 
-  const budget = prefs.monthly_budget;
-  const cap = month ? budget : Math.round((budget * 12) / 52);
+  // Separate limits: weekly and monthly are set independently.
+  const budgetKey = month ? "monthly_budget" : "weekly_budget";
+  const budget = prefs[budgetKey];
+  const cap = budget;
+  const stepBy = month ? 10 : 5;
   const left = cap - spent;
   const frac = cap > 0 ? Math.min(spent / cap, 1) : 0;
   const circ = 2 * Math.PI * 82;
@@ -87,12 +90,12 @@ export default function Spend() {
       </div>
 
       <main className="main" style={{ paddingTop: 18 }}>
-        <Section id="bl" title="Monthly budget" hint="Use − and + to set your limit. The ring shows how much you've used."
+        <Section id="bl" title={month ? "Monthly budget" : "Weekly budget"} hint="Use − and + to set your limit. The ring shows how much you've used."
           right={<span className="tnum" style={{ fontSize: 14, fontWeight: 700, color: left >= 0 ? "#1F7A4A" : "#A8170F", paddingTop: 2, whiteSpace: "nowrap" }}>{left >= 0 ? `$${left.toFixed(2)} left` : `$${Math.abs(left).toFixed(2)} over`}</span>}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <button className="nb" aria-label="Lower budget by $10" onClick={() => setPrefs({ monthly_budget: Math.max(0, budget - 10) })}><Minus size={22} /></button>
+            <button className="nb" aria-label={`Lower budget by $${stepBy}`} onClick={() => setPrefs({ [budgetKey]: Math.max(0, budget - stepBy) })}><Minus size={22} /></button>
             <output className="tnum" style={{ fontSize: 24, fontWeight: 800 }}>${budget.toFixed(0)}</output>
-            <button className="nb" aria-label="Raise budget by $10" onClick={() => setPrefs({ monthly_budget: budget + 10 })}><Plus size={22} /></button>
+            <button className="nb" aria-label={`Raise budget by $${stepBy}`} onClick={() => setPrefs({ [budgetKey]: budget + stepBy })}><Plus size={22} /></button>
           </div>
         </Section>
 

@@ -90,10 +90,18 @@ export default function Prices() {
           </div>
         </Section>
 
+        <Section id="dist" title="Distance" hint="How far to look for stations.">
+          <div className="nseg" role="group" aria-label="Search distance" style={{ alignSelf: "flex-start" }}>
+            {([2, 5, 10, 20] as const).map((mi) => (
+              <button key={mi} className={prefs.search_radius_mi === mi ? "on" : ""} aria-pressed={prefs.search_radius_mi === mi} onClick={() => setPrefs({ search_radius_mi: mi })}>{mi} mi</button>
+            ))}
+          </div>
+        </Section>
+
         <Section
           id="near"
           title={`${gradeName(grade)} near ${loc.manual ? loc.label : "you"}`}
-          hint={sortBy === "price" ? "Cheapest first. Tap a station for all prices and directions." : "Closest first. Tap a station for all prices and directions."}
+          hint={`${sortBy === "price" ? "Cheapest" : "Closest"} first within ${prefs.search_radius_mi} mi. Tap a station for all prices and directions.`}
           right={<button className="nb xs" aria-label="Refresh prices" onClick={() => reloadStations(true)}>{stationsLoading ? <span className="spin" /> : <ArrowsClockwise size={18} />}</button>}
         >
           {stationsError && <p className="err">{stationsError === "network" ? "Can't reach the server. Check your connection." : "Couldn't load prices. Try refresh."}</p>}

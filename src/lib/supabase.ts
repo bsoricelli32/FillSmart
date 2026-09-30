@@ -32,7 +32,7 @@ export type Fillup = {
   gallons: number; price_per_gal: number; total: number; odometer: number | null; photo_path: string | null; filled_at: string;
 };
 export type Prefs = {
-  monthly_budget: number; preferred_grade: Grade; price_alert: number | null;
+  monthly_budget: number; weekly_budget: number; search_radius_mi: 2 | 5 | 10 | 20; preferred_grade: Grade; price_alert: number | null;
   price_alert_on: boolean; weekly_report_on: boolean;
 };
 

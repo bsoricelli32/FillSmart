@@ -58,6 +58,23 @@ async function fetchGoogle(lat: number, lng: number, radius: number, key: string
   }).filter((s: Station) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
 }
 
+/**
+ * Google returns at most the 20 closest stations per search. Up to about 5 miles one search is enough;
+ * wider areas are covered by 7 overlapping circles (center plus a ring of 6) and merged.
+ */
+async function fetchArea(lat: number, lng: number, radius: number, key: string): Promise<Station[]> {
+  if (radius <= 8100) return fetchGoogle(lat, lng, radius, key);
+  const ring = radius * 0.65, sub = Math.round(radius * 0.55);
+  const centers = [[lat, lng], ...Array.from({ length: 6 }, (_, k) => {
+    const a = (k * Math.PI) / 3;
+    return [lat + (ring * Math.cos(a)) / 111_000, lng + (ring * Math.sin(a)) / (111_000 * Math.cos(lat * Math.PI / 180))];
+  })];
+  const parts = await Promise.all(centers.map(([a, b]) => fetchGoogle(a, b, sub, key)));
+  const byId = new Map<string, Station>();
+  for (const s of parts.flat()) if (!byId.has(s.place_id)) byId.set(s.place_id, s);
+  return [...byId.values()];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -71,7 +88,7 @@ Deno.serve(async (req) => {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return json({ error: "bad_location" }, 400);
   }
-  const radius = Math.min(Math.max(Number(body.radius_m) || 8000, 1000), 25000);
+  const radius = Math.min(Math.max(Number(body.radius_m) || 8000, 1000), 33000); // up to about 20 miles
   const dLat = radius / 111_000, dLng = radius / (111_000 * Math.cos(lat * Math.PI / 180));
 
   const admin = adminClient();
@@ -86,13 +103,18 @@ Deno.serve(async (req) => {
   let stations: Station[] = (cached ?? []).map((c) => ({
     place_id: c.place_id, name: c.name, address: c.address, lat: c.lat, lng: c.lng, prices: c.prices ?? {},
   }));
-  const isFresh = (cached ?? []).length > 0 && (cached ?? []).every((c) => c.fetched_at >= freshSince);
+  // Fresh only if a Google fetch in the last 45 minutes covered this whole circle.
+  // (A wider search must not reuse a smaller area's results.)
+  const { data: fetches } = await admin.from("nearby_fetches").select("lat,lng,radius_m").gte("fetched_at", freshSince);
+  const isFresh = (fetches ?? []).some((f) => miles(lat, lng, f.lat, f.lng) * 1609.34 + radius <= f.radius_m + 300);
 
   if (key && (!isFresh || body.refresh)) {
-    const fresh = await fetchGoogle(lat, lng, radius, key);
+    const fresh = await fetchArea(lat, lng, radius, key);
     if (fresh.length) {
       const now = new Date().toISOString();
       await admin.from("station_cache").upsert(fresh.map((s) => ({ ...s, fetched_at: now })));
+      await admin.from("nearby_fetches").insert({ lat, lng, radius_m: radius });
+      await admin.from("nearby_fetches").delete().lt("fetched_at", new Date(Date.now() - 86400_000).toISOString());
 
       // Keep price history for the Outlook screen: log Google prices that changed.
       const oldById = new Map(stations.map((s) => [s.place_id, s]));
