@@ -12,6 +12,7 @@ A phone web app (PWA) for local gas prices, pump-photo scans, fuel spend, and MP
 - **Server functions:**
   - `scan-pump` reads a pump photo with Claude Haiku and returns sale, gallons, and price per gallon.
   - `nearby-prices` pulls gas stations and fuel prices from the Google Places API. It caches them for 45 minutes, merges in driver reports (newest price wins), and saves price history for the Outlook screen.
+  - `eia-sync` runs daily at 4:07 pm Mountain (pg_cron). It saves weekly Denver retail prices and daily Gulf Coast wholesale prices from the U.S. EIA into `market_prices` for the Outlook forecast.
 
 ## Steps left (about 20 minutes)
 
@@ -24,6 +25,7 @@ https://supabase.com/dashboard/project/kvunlfjsdqrmafmilvrs/functions/secrets
 |---|---|---|
 | `ANTHROPIC_API_KEY` | console.anthropic.com, API Keys | Scan asks you to type the numbers |
 | `GOOGLE_MAPS_API_KEY` | Google Cloud console: enable **Places API (New)**, create a key, restrict it to Places API (New) | Only prices you and your invites report show up |
+| `EIA_API_KEY` | eia.gov/opendata, free | Outlook falls back to a simple trend line |
 
 Check Google's current Places pricing before turning it on. Fuel prices are an Enterprise-tier field. The 45-minute cache keeps calls low, but set a budget alert in Google Cloud.
 

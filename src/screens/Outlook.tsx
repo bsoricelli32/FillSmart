@@ -3,9 +3,18 @@ import { Minus, TrendDown, TrendUp } from "@phosphor-icons/react";
 import { useStore } from "../lib/store";
 import { gradeName, supabase } from "../lib/supabase";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
+import { fitHorizons, pathAt, type Obs } from "../lib/forecast";
 
-type Pt = { t: number; v: number };
+type Pt = { t: number; v: number; band?: number };
 const DAY = 86400000;
+
+// EIA series per grade: Denver retail (weekly) and the Gulf Coast wholesale benchmark (daily).
+const SERIES: Record<string, { retail: string; spot: string }> = {
+  "87": { retail: "EMM_EPMR_PTE_YDEN_DPG", spot: "EER_EPMRU_PF4_RGC_DPG" },
+  "89": { retail: "EMM_EPMM_PTE_YDEN_DPG", spot: "EER_EPMRU_PF4_RGC_DPG" },
+  "93": { retail: "EMM_EPMP_PTE_YDEN_DPG", spot: "EER_EPMRU_PF4_RGC_DPG" },
+  D: { retail: "EMD_EPD2D_PTE_R40_DPG", spot: "EER_EPD2DXL0_PF4_RGC_DPG" },
+};
 
 function median(xs: number[]) {
   const s = [...xs].sort((a, b) => a - b);
@@ -39,12 +48,62 @@ export default function Outlook() {
       .then(({ data }) => setRows((data ?? []).map((r) => ({ price: Number(r.price), reported_at: r.reported_at }))));
   }, [grade, loc.lat, loc.lng]);
 
+  const [market, setMarket] = useState<{ retail: Obs[]; spot: Obs[] } | null>(null);
+  useEffect(() => {
+    const s = SERIES[grade];
+    if (!s) return;
+    const since = new Date(Date.now() - 2.5 * 365 * DAY).toISOString().slice(0, 10);
+    supabase.from("market_prices").select("series,period,value").in("series", [s.retail, s.spot]).gte("period", since)
+      .order("period").limit(1000)
+      .then(({ data }) => {
+        const pick = (id: string) => (data ?? []).filter((r) => r.series === id).map((r) => ({ t: new Date(r.period + "T00:00:00Z").getTime(), v: Number(r.value) }));
+        setMarket({ retail: pick(s.retail), spot: pick(s.spot) });
+      });
+  }, [grade]);
+
   const daily = view === "daily";
   const model = useMemo(() => {
     if (!rows) return null;
     const bucket = daily ? DAY : 7 * DAY;
-    const span = daily ? 14 : 12;
     const now = Date.now();
+
+    // Wholesale-led forecast from EIA data, shifted to match prices near you.
+    const hz = market && fitHorizons(market.retail, market.spot);
+    if (market && hz) {
+      const R = market.retail, lastT = R[R.length - 1].t;
+      const denverNow = R[R.length - 1].v + pathAt(hz, lastT, now).change;
+      const recent = rows.filter((r) => new Date(r.reported_at).getTime() >= now - 7 * DAY).map((r) => r.price);
+      const local = recent.length >= 3 ? median(recent) : null;
+      const offset = local != null ? local - denverNow : 0;
+
+      // History: your area's daily medians when there are enough, otherwise the regional weekly series.
+      const days = new Map<number, number[]>();
+      for (const r of rows) {
+        const t = Math.floor(new Date(r.reported_at).getTime() / DAY) * DAY;
+        if (t < now - 14 * DAY) continue;
+        if (!days.has(t)) days.set(t, []);
+        days.get(t)!.push(r.price);
+      }
+      const localDaily: Pt[] = [...days.entries()].sort((a, b) => a[0] - b[0]).map(([t, v]) => ({ t, v: median(v) }));
+      const hist: Pt[] = daily && localDaily.length >= 4 ? localDaily
+        : R.filter((p) => p.t >= now - (daily ? 42 : 84) * DAY).map((p) => ({ t: p.t, v: p.v + offset }));
+      hist.push({ t: now, v: local ?? denverNow });
+
+      const today = local ?? denverNow;
+      const ahead = daily ? 7 : 4;
+      const at = (t: number) => { const p = pathAt(hz, lastT, t), p0 = pathAt(hz, lastT, now); return { v: today + p.change - p0.change, band: Math.sqrt(Math.max(0, p.band ** 2 - p0.band ** 2)) }; };
+      const fc: Pt[] = Array.from({ length: ahead }, (_, i) => { const t = now + (i + 1) * bucket; return { t, ...at(t) }; });
+      const lat = at(now + (daily ? 3 : 14) * DAY);
+      const later = lat.v;
+      const change = Math.round((later - today) * 100);
+      const range = [Math.round((later - lat.band - today) * 100), Math.round((later + lat.band - today) * 100)] as const;
+      const signal = hz[daily ? 0 : 1].signal;
+      const conf = (signal ? "Medium" : "Low") as "Medium" | "Low";
+      return { hist, fc, today, later, change, range, conf, signal, local: local != null, market: true, enough: true as const };
+    }
+
+    // Fallback until EIA data arrives: straight trend line through prices near you.
+    const span = daily ? 14 : 12;
     const start = Math.floor(now / bucket) * bucket - (span - 1) * bucket;
     const groups = new Map<number, number[]>();
     for (const r of rows) {
@@ -68,21 +127,23 @@ export default function Outlook() {
     const later = fc[daily ? 2 : 1].v;
     const change = Math.round((later - today) * 100);
     const conf = recent.length >= 6 && f.r2 > 0.6 ? "Medium" : "Low";
-    return { hist, fc, today, later, change, conf, enough: true as const };
-  }, [rows, daily]);
+    return { hist, fc, today, later, change, range: null, conf, signal: true, local: true, market: false, enough: true as const };
+  }, [rows, daily, market]);
 
   // Chart geometry
   const W = 330, H = 170, X0 = 40, X1 = 324, Y0 = 10, Y1 = 142;
   let chart: JSX.Element | null = null;
   if (model?.enough) {
     const all = [...model.hist, ...model.fc];
-    const lo = Math.min(...all.map((p) => p.v)) - 0.04, hi = Math.max(...all.map((p) => p.v)) + 0.04;
+    const spread = (p: Pt, k: number) => p.band ?? 0.006 * k;
+    const pad = (p: Pt) => p.band ?? 0;
+    const lo = Math.min(...all.map((p) => p.v - pad(p))) - 0.04, hi = Math.max(...all.map((p) => p.v + pad(p))) + 0.04;
     const t0 = all[0].t, t1 = all[all.length - 1].t;
     const x = (t: number) => X0 + ((X1 - X0) * (t - t0)) / Math.max(1, t1 - t0);
     const y = (v: number) => Y1 - ((Y1 - Y0) * (v - lo)) / (hi - lo);
     const last = model.hist[model.hist.length - 1];
     const fcLine = [last, ...model.fc];
-    const band = [...fcLine.map((p, k) => `${x(p.t)},${y(p.v + 0.006 * k)}`), ...fcLine.map((p, k) => `${x(p.t)},${y(p.v - 0.006 * k)}`).reverse()].join(" ");
+    const band = [...fcLine.map((p, k) => `${x(p.t)},${y(p.v + spread(p, k))}`), ...fcLine.map((p, k) => `${x(p.t)},${y(p.v - spread(p, k))}`).reverse()].join(" ");
     const fmt = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
     chart = (
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${gradeName(grade)} price history with a dashed trend estimate`}>
@@ -101,8 +162,9 @@ export default function Outlook() {
     );
   }
 
-  const rising = model?.enough && model.change > 1;
-  const falling = model?.enough && model.change < -1;
+  const noSignal = model?.enough && !model.signal;
+  const rising = model?.enough && !noSignal && model.change > 1;
+  const falling = model?.enough && !noSignal && model.change < -1;
   const Icon = rising ? TrendUp : falling ? TrendDown : Minus;
 
   return (
@@ -120,12 +182,12 @@ export default function Outlook() {
             <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
               <span className="nb accent" aria-hidden style={{ flex: "none" }}><Icon size={22} /></span>
               <div>
-                <h2 id="vd" style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>{rising ? "Prices likely rising" : falling ? "Prices likely falling" : "Prices holding steady"}</h2>
-                <p className="hint">{rising ? "Fill up soon if you can." : falling ? "If you can wait a few days, you may pay less." : "No reason to rush or wait."}</p>
+                <h2 id="vd" style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>{noSignal ? "No clear signal" : rising ? "Prices likely rising" : falling ? "Prices likely falling" : "Prices holding steady"}</h2>
+                <p className="hint">{noSignal ? "Prices here swing week to week without a pattern we can predict. The range shows how much they usually move." : rising ? "Fill up soon if you can." : falling ? "If you can wait a few days, you may pay less." : "No reason to rush or wait."}</p>
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              <div className="rsunk" style={{ borderRadius: 16, padding: "10px 14px", display: "flex", flexDirection: "column" }}><span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>LATEST AVERAGE</span><PumpPrice price={model.today} size={22} /></div>
+              <div className="rsunk" style={{ borderRadius: 16, padding: "10px 14px", display: "flex", flexDirection: "column" }}><span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{model.local ? "LATEST AVERAGE" : "DENVER AVERAGE"}</span><PumpPrice price={model.today} size={22} /></div>
               <div className="rsunk" style={{ borderRadius: 16, padding: "10px 14px", display: "flex", flexDirection: "column", color: "#B01C17" }}><span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>{daily ? "IN 3 DAYS" : "IN 2 WEEKS"}</span><PumpPrice price={model.later} size={22} /></div>
             </div>
           </section>
@@ -142,13 +204,16 @@ export default function Outlook() {
         )}
         {model?.enough && (
           <>
-            <Section id="ch" title="Price trend" hint="Dark line is the middle price drivers saw. Red dashes are a simple trend estimate, with the likely range shaded.">
+            <Section id="ch" title="Price trend" hint={model.market
+              ? `Dark line is ${model.local ? "the price near you" : "the Denver average"}. ${model.signal ? "Red dashes are the forecast from wholesale prices" : "Red dashes hold today's price"}, with the likely range shaded.`
+              : "Dark line is the middle price drivers saw. Red dashes are a simple trend estimate, with the likely range shaded."}>
               <div className="raised-sm" style={{ borderRadius: 22, padding: "12px 10px 6px" }}>{chart}</div>
             </Section>
             <dl style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              <div className="raised-sm" style={{ borderRadius: 18, padding: "10px 14px" }}><dt style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>EXPECTED CHANGE</dt><dd className="tnum" style={{ fontSize: 17, fontWeight: 800 }}>{model.change > 0 ? "+" : ""}{model.change}¢</dd></div>
+              <div className="raised-sm" style={{ borderRadius: 18, padding: "10px 14px" }}><dt style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>EXPECTED CHANGE</dt><dd className="tnum" style={{ fontSize: 17, fontWeight: 800 }}>{model.change > 0 ? "+" : ""}{model.change}¢</dd>{model.range && <dd className="tnum" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>Range {model.range[0] > 0 ? "+" : ""}{model.range[0]} to {model.range[1] > 0 ? "+" : ""}{model.range[1]}¢</dd>}</div>
               <div className="raised-sm" style={{ borderRadius: 18, padding: "10px 14px" }}><dt style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>CONFIDENCE</dt><dd style={{ fontSize: 17, fontWeight: 800 }}>{model.conf}</dd></div>
             </dl>
+            {model.market && <p className="hint">Regional and wholesale prices come from the U.S. Energy Information Administration. The forecast can't see sudden events like a refinery outage.</p>}
           </>
         )}
       </main>
