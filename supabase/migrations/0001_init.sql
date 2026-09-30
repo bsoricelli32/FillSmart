@@ -1,0 +1,7 @@
+-- Already applied to the live Pumpline project. Kept here as a record.
+-- Tables: allowlist, vehicles, fillups, user_prefs, price_reports, station_cache
+-- Security: RLS on every table; helpers private.is_allowed() and private.enforce_allowlist()
+-- (sign-ups from emails not in public.allowlist are rejected by a trigger on auth.users)
+-- Storage: private bucket "pump-photos", each user limited to their own folder.
+-- To invite someone, run in the SQL editor:
+--   insert into public.allowlist (email) values ('friend@example.com');
