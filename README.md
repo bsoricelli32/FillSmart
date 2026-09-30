@@ -4,7 +4,7 @@ A phone web app (PWA) for local gas prices, pump-photo scans, fuel spend, and MP
 
 ## What's already live
 
-**Supabase project "Pumpline"** (`kvunlfjsdqrmafmilvrs`, free plan, us-west-1)
+**Supabase project "FillSmart"** (`kvunlfjsdqrmafmilvrs`, free plan, us-west-1)
 
 - **Database:** `vehicles`, `fillups`, `user_prefs`, `price_reports`, `station_cache`, `allowlist`
 - **Security:** row-level security on every table. Only emails on `allowlist` can sign up (currently just `bsoricelli32@gmail.com`).

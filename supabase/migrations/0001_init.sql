@@ -1,4 +1,4 @@
--- Already applied to the live Pumpline project. Kept here as a record.
+-- Already applied to the live FillSmart project. Kept here as a record.
 -- Tables: allowlist, vehicles, fillups, user_prefs, price_reports, station_cache
 -- Security: RLS on every table; helpers private.is_allowed() and private.enforce_allowlist()
 -- (sign-ups from emails not in public.allowlist are rejected by a trigger on auth.users)
