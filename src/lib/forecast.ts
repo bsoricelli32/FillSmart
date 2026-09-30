@@ -17,7 +17,7 @@
 // the forecast stops at 2 weeks.
 
 export type Obs = { t: number; v: number };
-export type DriverKey = "wholesale" | "margin" | "momentum" | "season";
+export type DriverKey = "wholesale" | "margin" | "momentum" | "season" | "weekday";
 export type Driver = { key: DriverKey; fact: string; cents: number };
 export type Horizon = {
   h: number;

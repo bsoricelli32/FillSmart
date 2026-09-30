@@ -5,6 +5,7 @@ import { gradeName, supabase } from "../lib/supabase";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
 import { forecast, pathAt, type Obs } from "../lib/forecast";
 import { PriceChart } from "../components/PriceChart";
+import { DAY_NAMES, MIN_DAYS, daysCollected, weekdayPattern } from "../lib/weekday";
 
 type Pt = { t: number; v: number; band?: number };
 const DAY = 86400000;
@@ -18,6 +19,7 @@ const SERIES: Record<string, { retail: string; spot: string; place: string }> = 
 };
 
 type Report = { place_id: string; price: number; reported_at: string };
+const weekdayOf = (t: number) => new Date(t).getDay();
 
 /** Middle price across stations, each at its latest price in the 7 days before `t`. Null if too few stations. */
 function stationIndex(rows: Report[], t: number, minStations: number): number | null {
@@ -67,13 +69,24 @@ export default function Outlook() {
 
   useEffect(() => {
     const d = 0.25; // about 15 miles
-    const since = new Date(Date.now() - 21 * DAY).toISOString();
-    // Newest first so the 1,000-row cap drops the oldest prices, not today's.
-    supabase.from("price_reports").select("place_id,price,reported_at").eq("grade", grade).gte("reported_at", since)
-      .gte("lat", loc.lat - d).lte("lat", loc.lat + d).gte("lng", loc.lng - d).lte("lng", loc.lng + d)
-      .order("reported_at", { ascending: false }).limit(1000)
-      .then(({ data }) => setRows((data ?? []).map((r) => ({ place_id: r.place_id, price: Number(r.price), reported_at: r.reported_at })).reverse()));
+    const since = new Date(Date.now() - 56 * DAY).toISOString(); // 8 weeks, for the day-of-week pattern
+    let live = true;
+    (async () => {
+      // Newest first, in pages of 1,000 (the API cap), up to 5,000 prices.
+      const all: Report[] = [];
+      for (let from = 0; from < 5000; from += 1000) {
+        const { data } = await supabase.from("price_reports").select("place_id,price,reported_at").eq("grade", grade).gte("reported_at", since)
+          .gte("lat", loc.lat - d).lte("lat", loc.lat + d).gte("lng", loc.lng - d).lte("lng", loc.lng + d)
+          .order("reported_at", { ascending: false }).range(from, from + 999);
+        const page = (data ?? []).map((r) => ({ place_id: r.place_id, price: Number(r.price), reported_at: r.reported_at }));
+        all.push(...page);
+        if (page.length < 1000) break;
+      }
+      if (live) setRows(all.reverse());
+    })();
+    return () => { live = false; };
   }, [grade, loc.lat, loc.lng]);
+  const pattern = useMemo(() => (rows ? weekdayPattern(rows) : null), [rows]);
 
   const [market, setMarket] = useState<{ retail: Obs[]; spot: Obs[] } | null>(null);
   useEffect(() => {
@@ -113,7 +126,9 @@ export default function Outlook() {
 
       const today = local ?? denverNow;
       const ahead = daily ? 7 : 2; // the forecast stops at 2 weeks
-      const at = (t: number) => { const p = pathAt(hz, lastT, t), p0 = pathAt(hz, lastT, now); return { v: today + p.change - p0.change, band: Math.sqrt(Math.max(0, p.band ** 2 - p0.band ** 2)) }; };
+      // Day-of-week rhythm near you (daily view only; weekly points land on the same weekday).
+      const dow = (t: number) => (daily && pattern ? pattern.offsets[weekdayOf(t)] - pattern.offsets[weekdayOf(now)] : 0);
+      const at = (t: number) => { const p = pathAt(hz, lastT, t), p0 = pathAt(hz, lastT, now); return { v: today + p.change - p0.change + dow(t), band: Math.sqrt(Math.max(0, p.band ** 2 - p0.band ** 2)) }; };
       const fc: Pt[] = Array.from({ length: ahead }, (_, i) => { const t = now + (i + 1) * bucket; return { t, ...at(t) }; });
       const lat = at(now + (daily ? 3 : 14) * DAY);
       const later = lat.v;
@@ -123,7 +138,15 @@ export default function Outlook() {
       const rate = hz0.calls ? hz0.hits / hz0.calls : 0;
       const conf = rate >= 0.72 ? "Good" : rate >= 0.6 ? "Fair" : "Low";
       const record = `Right ${Math.round(rate * 10)} of 10 times`;
-      return { hist, fc, today, later, change, range, conf, record, drivers: hz0.drivers, local: local != null, market: true, enough: true as const };
+      const drivers = [...hz0.drivers];
+      if (daily && pattern) {
+        const t3 = now + 3 * DAY, o = pattern.offsets;
+        const lo = o.indexOf(Math.min(...o)), hi = o.indexOf(Math.max(...o));
+        drivers.push({ key: "weekday", cents: dow(t3),
+          fact: `Near you, ${DAY_NAMES[lo]}s run ${Math.round(Math.abs(o[lo]) * 100)}¢ below a typical day and ${DAY_NAMES[hi]}s ${Math.round(Math.abs(o[hi]) * 100)}¢ above. In 3 days it's ${DAY_NAMES[weekdayOf(t3)]}.` });
+        drivers.sort((a, z) => Math.abs(z.cents) - Math.abs(a.cents));
+      }
+      return { hist, fc, today, later, change, range, conf, record, drivers, local: local != null, market: true, enough: true as const };
     }
 
     // Fallback until EIA data arrives: straight trend line through prices near you.
@@ -152,7 +175,7 @@ export default function Outlook() {
     const change = Math.round((later - today) * 100);
     const conf = recent.length >= 6 && f.r2 > 0.6 ? "Medium" : "Low";
     return { hist, fc, today, later, change, range: null, conf, record: null, drivers: null, local: true, market: false, enough: true as const };
-  }, [rows, daily, market, hz]);
+  }, [rows, daily, market, hz, pattern]);
 
   const rising = model?.enough && model.change > 1;
   const falling = model?.enough && model.change < -1;
@@ -223,6 +246,29 @@ export default function Outlook() {
                 </ul>
               </Section>
             )}
+            <Section id="dow" title="Best day to fill up" hint={pattern
+              ? `How prices near you usually differ by day, from ${pattern.weeks} weeks of prices at ${pattern.stations} stations.`
+              : "Learning which days are cheapest near you from local station prices."}>
+              {pattern ? (
+                <div role="list" style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 6 }}>
+                  {pattern.offsets.map((o, i) => {
+                    const best = o === Math.min(...pattern.offsets);
+                    const cents = Math.round(o * 100);
+                    return (
+                      <div key={i} role="listitem" className={best ? "" : "raised-sm"} aria-label={`${DAY_NAMES[i]}: ${cents === 0 ? "typical" : `${Math.abs(cents)} cents ${cents < 0 ? "below" : "above"} typical`}${best ? ", cheapest" : ""}`}
+                        style={{ borderRadius: 14, padding: "8px 2px", textAlign: "center", display: "flex", flexDirection: "column", gap: 2, ...(best ? { background: "linear-gradient(145deg,#E23A2E,#C21F1A)", color: "#fff", boxShadow: "0 6px 14px rgba(194,31,26,.3)" } : {}) }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: best ? "#fff" : "var(--ink-2)" }}>{DAY_NAMES[i].slice(0, 3)}</span>
+                        <span className="tnum" style={{ fontSize: 14, fontWeight: 800 }}>{cents > 0 ? "+" : cents < 0 ? "\u2212" : ""}{Math.abs(cents)}¢</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="raised-sm empty">
+                  <p>Needs 3 weeks of daily prices from stations near you. {rows ? `${Math.min(daysCollected(rows), MIN_DAYS)} of ${MIN_DAYS} days collected so far.` : ""} Prices around Longmont save every 6 hours, and anywhere else whenever the app loads stations.</p>
+                </div>
+              )}
+            </Section>
             {model.market && <p className="hint">Tested week by week on the last 2 years of prices. Regional and wholesale prices come from the U.S. Energy Information Administration. The forecast can't see sudden events like a refinery outage.</p>}
           </>
         )}
