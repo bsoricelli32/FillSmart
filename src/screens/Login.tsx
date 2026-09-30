@@ -32,7 +32,7 @@ export default function Login() {
     <div className="screen" style={{ display: "flex", flexDirection: "column", justifyContent: "center", padding: "40px 24px" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 28 }}>
         <div className="nb lg accent" aria-hidden><GasPump size={30} weight="fill" /></div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.02em" }}>Pumpline</h1>
+        <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.02em" }}>FillSmart</h1>
         <p className="hint" style={{ textAlign: "center" }}>Local gas prices, pump scans and fuel spend. Invite only for now.</p>
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>

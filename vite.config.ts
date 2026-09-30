@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg"],
       manifest: {
-        name: "Pumpline",
-        short_name: "Pumpline",
+        name: "FillSmart",
+        short_name: "FillSmart",
         description: "Local gas prices, pump scans, and fuel spend.",
         theme_color: "#F4F1EC",
         background_color: "#F4F1EC",

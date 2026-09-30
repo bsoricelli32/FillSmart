@@ -104,7 +104,7 @@ export default function Scan() {
         <section aria-labelledby="cam" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 20px" }}>
           <div>
             <h2 id="cam" className="h2">Point at the pump screen</h2>
-            <p className="hint">Take a photo that shows the sale total, gallons and price. Pumpline reads it for you.</p>
+            <p className="hint">Take a photo that shows the sale total, gallons and price. FillSmart reads it for you.</p>
           </div>
           <button className="rsunk" onClick={() => camRef.current?.click()} aria-label="Take a photo of the pump" style={{ border: 0, borderRadius: 28, padding: 10, cursor: "pointer" }}>
             <div style={{ height: 200, borderRadius: 20, overflow: "hidden", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", background: preview ? `center/cover no-repeat url(${preview})` : "linear-gradient(145deg,#E4E1DA,#C8C3BA)" }}>

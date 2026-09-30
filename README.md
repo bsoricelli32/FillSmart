@@ -1,4 +1,4 @@
-# Pumpline v1
+# FillSmart v1
 
 A phone web app (PWA) for local gas prices, pump-photo scans, fuel spend, and MPG. Invite only.
 
@@ -29,7 +29,7 @@ Check Google's current Places pricing before turning it on. Fuel prices are an E
 
 ### 2. Deploy the app
 
-1. Create a GitHub repo (for example `bsoricelli32/pumpline`) and push this folder.
+1. Create a GitHub repo (for example `bsoricelli32/fillsmart`) and push this folder.
 2. On vercel.com: **Add New Project**, then import the repo. Vercel detects Vite automatically.
 3. Add the two variables from `.env` under **Environment Variables**, then deploy.
 
@@ -38,7 +38,7 @@ Netlify also works: `public/_redirects` is included.
 ### 3. Point sign-up emails at your site
 
 Supabase dashboard, then Authentication, then URL Configuration:
-set **Site URL** to your Vercel URL (for example `https://pumpline.vercel.app`).
+set **Site URL** to your Vercel URL (for example `https://fillsmart.vercel.app`).
 
 ### 4. Install on your iPhone
 

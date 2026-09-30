@@ -75,7 +75,7 @@ export default function Garage() {
           </Section>
         )}
 
-        <Section id="nt" title="Notifications" hint="Pumpline saves these now. Alerts start arriving in a later update.">
+        <Section id="nt" title="Notifications" hint="FillSmart saves these now. Alerts start arriving in a later update.">
           <ul>
             <li style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 56 }}>
               <div style={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
