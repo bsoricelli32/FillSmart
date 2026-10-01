@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
-import { CarProfile, PencilSimple, Plus, SignOut, Warning } from "@phosphor-icons/react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { CarProfile, PencilSimple, Plus, ShareNetwork, SignOut, Warning } from "@phosphor-icons/react";
 import { useStore } from "../lib/store";
 import { Grade, GRADES, supabase, Vehicle } from "../lib/supabase";
 import { Bar, Section, TabDock } from "../components/TabDock";
@@ -97,6 +97,8 @@ export default function Garage() {
           </ul>
         </Section>
 
+        <InviteSection />
+
         <button className="pillbtn" onClick={() => supabase.auth.signOut()}><SignOut size={18} />Sign out</button>
       </main>
 
@@ -148,5 +150,29 @@ function VehicleSheet({ vehicle, onClose }: { vehicle: Vehicle | null; onClose: 
         </div>
       </form>
     </div>
+  );
+}
+
+/** Share the invite link by text (phone share sheet), or copy it where sharing isn't available. */
+function InviteSection() {
+  const [link, setLink] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.rpc("invite_code").then(({ data }) => { if (typeof data === "string" && data) setLink(`${window.location.origin}/?invite=${data}`); });
+  }, []);
+  async function share() {
+    if (!link) return;
+    const text = "I'm using FillSmart to find cheap gas nearby. Here's your invite:";
+    try {
+      if (navigator.share) { await navigator.share({ title: "FillSmart invite", text, url: link }); return; }
+      await navigator.clipboard.writeText(link);
+      setNote("Link copied. Paste it into a text.");
+    } catch { /* share sheet closed */ }
+  }
+  return (
+    <Section id="inv" title="Invite a friend" hint="Text this link. Anyone who opens it can create an account.">
+      <button className="pillbtn accent" onClick={share} disabled={!link}><ShareNetwork size={18} />{link ? "Share invite link" : "Loading link"}</button>
+      {note && <p className="hint" role="status">{note}</p>}
+    </Section>
   );
 }

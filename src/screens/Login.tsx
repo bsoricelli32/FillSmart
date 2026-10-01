@@ -2,8 +2,18 @@ import { FormEvent, useState } from "react";
 import { GasPump } from "@phosphor-icons/react";
 import { supabase } from "../lib/supabase";
 
+/** Invite code from a shared link (?invite=...), remembered in case the page reloads. */
+function readInvite(): string | null {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get("invite");
+    if (fromUrl && /^[a-z0-9]{6,32}$/i.test(fromUrl)) { localStorage.setItem("fs_invite", fromUrl); return fromUrl; }
+    return localStorage.getItem("fs_invite");
+  } catch { return null; }
+}
+
 export default function Login() {
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [invite] = useState(readInvite);
+  const [mode, setMode] = useState<"in" | "up">(invite ? "up" : "in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,9 +27,10 @@ export default function Login() {
       const { error } = await supabase.auth.signInWithPassword({ email: addr, password });
       if (error) setMsg({ kind: "err", text: error.message.includes("confirm") ? "Confirm your email first. Check your inbox for the link." : "Wrong email or password." });
     } else {
-      const { data, error } = await supabase.auth.signUp({ email: addr, password, options: { emailRedirectTo: window.location.origin } });
+      const { data, error } = await supabase.auth.signUp({ email: addr, password, options: { emailRedirectTo: window.location.origin, data: invite ? { invite } : undefined } });
       if (error) {
-        setMsg({ kind: "err", text: /database|invited/i.test(error.message) ? "That email isn't invited yet. Ask Bennett to add it." : error.message });
+        const notInvited = /database|invited/i.test(error.message);
+        setMsg({ kind: "err", text: !notInvited ? error.message : invite ? "That invite link isn't active anymore. Ask Bennett for a new one." : "You need an invite link to create an account. Ask Bennett for one." });
       } else if (!data.session) {
         setMsg({ kind: "ok", text: "Check your email and tap the confirm link, then come back here and sign in." });
         setMode("in");
@@ -33,7 +44,9 @@ export default function Login() {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 28 }}>
         <div className="nb lg accent" aria-hidden><GasPump size={30} weight="fill" /></div>
         <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.02em" }}>FillSmart</h1>
-        <p className="hint" style={{ textAlign: "center" }}>Local gas prices, pump scans and fuel spend. Invite only for now.</p>
+        <p className="hint" style={{ textAlign: "center" }}>{invite
+          ? "You're invited. Create your account here, then add FillSmart to your Home Screen."
+          : "Local gas prices, pump scans and fuel spend. Invite only for now."}</p>
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="sunk field">
