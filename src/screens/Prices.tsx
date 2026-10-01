@@ -52,6 +52,14 @@ export default function Prices() {
     return priced.sort((a, b) => priceFor(a, grade)! - priceFor(b, grade)!)[0];
   }, [stations, grade]);
 
+  // Local spread for the dials: lowest, average, highest within the search distance.
+  const spread = useMemo(() => {
+    const priced = stations.filter((s) => priceFor(s, grade) != null).sort((a, b) => priceFor(a, grade)! - priceFor(b, grade)!);
+    if (!priced.length) return null;
+    const avg = priced.reduce((a, s) => a + priceFor(s, grade)!, 0) / priced.length;
+    return { low: priced[0], high: priced[priced.length - 1], avg, n: priced.length };
+  }, [stations, grade]);
+
   const mapsUrl = `https://www.google.com/maps/search/gas+stations/@${loc.lat},${loc.lng},13z`;
 
   return (
@@ -62,20 +70,22 @@ export default function Prices() {
           title="Prices nearby"
           right={<button className="nb" aria-label={sortBy === "price" ? "Sort by distance" : "Sort by price"} onClick={() => setSortBy(sortBy === "price" ? "distance" : "price")}><SortAscending size={22} /></button>}
         />
-        <section aria-label="Lowest price" style={{ display: "flex", justifyContent: "center", marginTop: 2 }}>
-          <div className="rsunk" style={{ width: 196, height: 196, borderRadius: 98, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div className="dome" style={{ width: 160, height: 160, borderRadius: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "#fff", background: "#C21F1A", padding: "2px 8px", borderRadius: 8 }}>LOWEST {gradeName(grade).toUpperCase()}</span>
-              {cheapest ? (
+        <section aria-label={`${gradeName(grade)} prices near you`} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 2 }}>
+          <SideDial label="LOW" s={spread?.low} grade={grade} />
+          <div className="rsunk" style={{ width: 168, height: 168, borderRadius: 84, flex: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="dome" style={{ width: 138, height: 138, borderRadius: 69, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em", color: "#fff", background: "#C21F1A", padding: "2px 7px", borderRadius: 7 }}>AVERAGE</span>
+              {spread ? (
                 <>
-                  <PumpPrice price={priceFor(cheapest, grade)!} size={34} />
-                  <span style={{ fontSize: 12, color: "var(--ink-2)" }}>{cheapest.distance_mi} mi away</span>
+                  <PumpPrice price={spread.avg} size={30} />
+                  <span style={{ fontSize: 11, color: "var(--ink-2)" }}>{gradeName(grade)} · {spread.n} station{spread.n === 1 ? "" : "s"}</span>
                 </>
               ) : (
-                <span style={{ fontSize: 14, color: "var(--ink-2)", textAlign: "center", padding: "0 18px" }}>{stationsLoading ? "Checking prices" : "No prices yet"}</span>
+                <span style={{ fontSize: 13, color: "var(--ink-2)", textAlign: "center", padding: "0 14px" }}>{stationsLoading ? "Checking prices" : "No prices yet"}</span>
               )}
             </div>
           </div>
+          <SideDial label="HIGH" s={spread?.high} grade={grade} />
         </section>
       </div>
 
@@ -167,4 +177,20 @@ function StationRow({ s, grade, best = false, place = false }: { s: Station; gra
       <span className={"nb xs" + (best ? " accent" : "")} aria-hidden><CaretRight size={18} /></span>
     </Link>
   );
+}
+
+/** Small dial beside the average: the lowest or highest price nearby. Tap to open that station. */
+function SideDial({ label, s, grade }: { label: "LOW" | "HIGH"; s?: Station; grade: Grade }) {
+  const p = s ? priceFor(s, grade) : undefined;
+  const inner = (
+    <div className="dome" style={{ width: 70, height: 70, borderRadius: 35, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink-2)" }}>{label}</span>
+      {p != null ? <PumpPrice price={p} size={15} /> : <span style={{ fontSize: 13, color: "var(--ink-2)" }}>--</span>}
+      {s && <span style={{ fontSize: 10, color: "var(--ink-2)" }}>{s.distance_mi} mi</span>}
+    </div>
+  );
+  const ring = { width: 88, height: 88, borderRadius: 44, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink)" } as const;
+  return s && p != null
+    ? <Link to={`/station/${encodeURIComponent(s.place_id)}`} className="rsunk" style={ring} aria-label={`${label === "LOW" ? "Lowest" : "Highest"}: ${s.name}, $${p.toFixed(3)}, ${s.distance_mi} miles`}>{inner}</Link>
+    : <div className="rsunk" style={ring} aria-hidden>{inner}</div>;
 }
