@@ -94,7 +94,7 @@ export default function Prices() {
           <div role="group" aria-label="Fuel grade" style={{ display: "flex", gap: 12 }}>
             {GRADES.map((g) => (
               <button key={g.id} className={"grade" + (g.id === grade ? " on" : "")} aria-pressed={g.id === grade} onClick={() => setPrefs({ preferred_grade: g.id })}>
-                <span className="n">{g.id}</span><span className="s">{g.name}</span>
+                <span className="n">{g.label}</span><span className="s">{g.name}</span>
               </button>
             ))}
           </div>

@@ -7,12 +7,14 @@ export const supabase = createClient(url, key, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
 
+// Internal ids stay "87"/"89"/"93" (saved in the database). Google only reports regular, midgrade
+// and premium, never octane, so `label` is what pumps in Colorado and other high-altitude states show.
 export type Grade = "87" | "89" | "93" | "D";
-export const GRADES: { id: Grade; name: string }[] = [
-  { id: "87", name: "Regular" },
-  { id: "89", name: "Plus" },
-  { id: "93", name: "Premium" },
-  { id: "D", name: "Diesel" },
+export const GRADES: { id: Grade; label: string; name: string }[] = [
+  { id: "87", label: "85", name: "Regular" },
+  { id: "89", label: "87", name: "Plus" },
+  { id: "93", label: "91", name: "Premium" },
+  { id: "D", label: "D", name: "Diesel" },
 ];
 export const gradeName = (g: Grade) => GRADES.find((x) => x.id === g)?.name ?? "Regular";
 

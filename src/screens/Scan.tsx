@@ -130,7 +130,7 @@ export default function Scan() {
           <div className="sunk field">
             <label htmlFor="gr">Grade</label>
             <select id="gr" value={grade} onChange={(e) => setGrade(e.target.value as Grade)}>
-              {GRADES.map((g) => <option key={g.id} value={g.id}>{g.id === "D" ? "Diesel" : `${g.id} ${g.name}`}</option>)}
+              {GRADES.map((g) => <option key={g.id} value={g.id}>{g.id === "D" ? "Diesel" : `${g.label} ${g.name}`}</option>)}
             </select>
           </div>
           <div className="sunk field">

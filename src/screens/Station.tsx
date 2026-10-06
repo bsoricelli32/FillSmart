@@ -55,7 +55,7 @@ export default function Station() {
           <dl style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
             {GRADES.map((g) => (
               <div key={g.id} className="raised-sm" style={{ borderRadius: 20, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <dt style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-2)" }}>{g.name}</dt>
+                <dt style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-2)" }}>{g.id === "D" ? g.name : `${g.label} ${g.name}`}</dt>
                 <dd>{s.prices[g.id] ? <PumpPrice price={s.prices[g.id]!.price} size={18} /> : <span style={{ color: "var(--ink-2)" }}>--</span>}</dd>
               </div>
             ))}
@@ -117,7 +117,7 @@ function ReportSheet({ stationId, name, lat, lng, defaultGrade, onClose }: { sta
         <div role="group" aria-label="Grade" style={{ display: "flex", gap: 10 }}>
           {GRADES.map((g) => (
             <button type="button" key={g.id} className={"grade" + (g.id === grade ? " on" : "")} aria-pressed={g.id === grade} onClick={() => setGrade(g.id)} style={{ height: 56 }}>
-              <span className="n" style={{ fontSize: 18 }}>{g.id}</span><span className="s">{g.name}</span>
+              <span className="n" style={{ fontSize: 18 }}>{g.label}</span><span className="s">{g.name}</span>
             </button>
           ))}
         </div>

@@ -5,7 +5,9 @@ const GRADES = ["87", "89", "93", "D"];
 
 const PROMPT = `This is a phone photo of a gas pump display.
 Read the sale total in dollars, the gallons dispensed, and the price per gallon.
-If a fuel grade is visibly selected or lit, report it as "87", "89", "93" (use "93" for any premium 91-94), or "D" for diesel.
+If a fuel grade is visibly selected or lit, report which slot it is, not the octane printed on it:
+"87" = the lowest gasoline grade (often 85 in Colorado, 87 elsewhere), "89" = the middle grade, "93" = the highest gasoline grade (91 to 94), "D" = diesel.
+Judge by position among the grades on the pump when you can see them; if you only see a number, 85 or 86 is "87", 90 or higher is "93", and 87 to 89 is "89" when the pump also offers a lower grade, otherwise "87".
 Reply with only a JSON object, no other text:
 {"total": number|null, "gallons": number|null, "price_per_gal": number|null, "grade": "87"|"89"|"93"|"D"|null, "confidence": "high"|"medium"|"low"}
 Use null for anything you cannot read clearly.`;
