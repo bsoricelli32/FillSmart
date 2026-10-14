@@ -7,6 +7,7 @@ import { EpaVehicle, VehiclePicker } from "../components/VehiclePicker";
 import { tankTooSmall } from "../lib/vehicle";
 import { FuelAdvice } from "../components/FuelAdvice";
 import { Alerts } from "../components/Alerts";
+import { MileageCard } from "../components/MileageCard";
 import { disablePush } from "../lib/push";
 
 export default function Garage() {
@@ -95,6 +96,8 @@ export default function Garage() {
         )}
 
         {v && <FuelAdvice v={v} />}
+
+        <MileageCard />
 
         <Alerts />
 

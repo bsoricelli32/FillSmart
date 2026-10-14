@@ -10,6 +10,7 @@ import Scan from "./screens/Scan";
 import Spend from "./screens/Spend";
 import Outlook from "./screens/Outlook";
 import Garage from "./screens/Garage";
+import Mileage from "./screens/Mileage";
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/spend" element={<Spend />} />
           <Route path="/outlook" element={<Outlook />} />
           <Route path="/garage" element={<Garage />} />
+          <Route path="/mileage" element={<Mileage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
