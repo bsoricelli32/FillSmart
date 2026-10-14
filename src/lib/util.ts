@@ -49,3 +49,11 @@ export async function resizeImage(file: File, max = 1400): Promise<{ base64: str
 }
 
 export const DEFAULT_LOCATION = { lat: 40.1672, lng: -105.1019, label: "Longmont" };
+
+/** Straight-line miles between two points. */
+export function miles(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 3958.8, toR = Math.PI / 180;
+  const dLat = (bLat - aLat) * toR, dLng = (bLng - aLng) * toR;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}

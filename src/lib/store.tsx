@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { callFn, Fillup, Grade, Prefs, Station, supabase, Vehicle } from "./supabase";
 import { DEFAULT_LOCATION } from "./util";
+import { syncPush } from "./push";
 
 type Loc = { lat: number; lng: number; label: string; precise: boolean; manual?: boolean };
 
@@ -28,7 +29,7 @@ type Store = {
 const Ctx = createContext<Store | null>(null);
 export const useStore = () => useContext(Ctx)!;
 
-const DEFAULT_PREFS: Prefs = { monthly_budget: 220, weekly_budget: 50, vehicle_id: null, search_radius_mi: 5, preferred_grade: "87", price_alert: 3.1, price_alert_on: true, weekly_report_on: true };
+const DEFAULT_PREFS: Prefs = { monthly_budget: 220, weekly_budget: 50, vehicle_id: null, search_radius_mi: 5, preferred_grade: "87", price_alert: 3.1, price_alert_on: true, weekly_report_on: true, alert_lat: null, alert_lng: null, alert_label: null, tz: null };
 
 export function StoreProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const [prefs, setPrefsState] = useState<Prefs>(DEFAULT_PREFS);
@@ -49,11 +50,18 @@ export function StoreProvider({ userId, children }: { userId: string; children: 
   const saveTimer = useRef<number>();
 
   useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     supabase.from("user_prefs").select("*").maybeSingle().then(async ({ data }) => {
-      if (data) setPrefsState({ ...DEFAULT_PREFS, ...data, monthly_budget: Number(data.monthly_budget), weekly_budget: Number(data.weekly_budget ?? 50), search_radius_mi: Number(data.search_radius_mi ?? 5) as Prefs["search_radius_mi"], price_alert: data.price_alert == null ? null : Number(data.price_alert) });
-      else await supabase.from("user_prefs").insert({});
+      if (data) setPrefsState({ ...DEFAULT_PREFS, ...data, tz: tz || data.tz, monthly_budget: Number(data.monthly_budget), weekly_budget: Number(data.weekly_budget ?? 50), search_radius_mi: Number(data.search_radius_mi ?? 5) as Prefs["search_radius_mi"], price_alert: data.price_alert == null ? null : Number(data.price_alert) });
+      else { setPrefsState((cur) => ({ ...cur, tz })); await supabase.from("user_prefs").insert({}); }
+      // Keep the time zone current for the Sunday report.
+      if (tz && data?.tz !== tz) await supabase.from("user_prefs").update({ tz }).eq("user_id", userId);
     });
-  }, []);
+    syncPush();
+    const onMsg = (e: MessageEvent) => { if (e.data?.type === "push-resubscribe") syncPush(); };
+    navigator.serviceWorker?.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMsg);
+  }, [userId]);
 
   const setPrefs = useCallback((p: Partial<Prefs>) => {
     setPrefsState((cur) => {

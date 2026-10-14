@@ -25,6 +25,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
+        importScripts: ["push-sw.js"],
         runtimeCaching: [
           { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: "CacheFirst", options: { cacheName: "fonts" } },
         ],

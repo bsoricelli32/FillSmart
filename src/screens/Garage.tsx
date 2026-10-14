@@ -6,6 +6,8 @@ import { Bar, Section, TabDock } from "../components/TabDock";
 import { EpaVehicle, VehiclePicker } from "../components/VehiclePicker";
 import { tankTooSmall } from "../lib/vehicle";
 import { FuelAdvice } from "../components/FuelAdvice";
+import { Alerts } from "../components/Alerts";
+import { disablePush } from "../lib/push";
 
 export default function Garage() {
   const { vehicles, fillups, prefs, setPrefs, reloadVehicles } = useStore();
@@ -94,31 +96,11 @@ export default function Garage() {
 
         {v && <FuelAdvice v={v} />}
 
-        <Section id="nt" title="Notifications" hint="FillSmart saves these now. Alerts start arriving in a later update.">
-          <ul>
-            <li style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 56 }}>
-              <div style={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
-                <span id="l1" style={{ fontSize: 16, fontWeight: 700 }}>Price drop alert</span>
-                <label style={{ fontSize: 13, color: "var(--ink-2)", display: "flex", alignItems: "center", gap: 4 }}>
-                  When {GRADES.find((g) => g.id === prefs.preferred_grade)?.name.toLowerCase()} nearby is under $
-                  <input aria-label="Alert price" inputMode="decimal" defaultValue={prefs.price_alert?.toFixed(2) ?? ""} onBlur={(e) => { const n = parseFloat(e.target.value); setPrefs({ price_alert: n > 0 ? n : null }); }} style={{ width: 52, border: 0, background: "transparent", font: "inherit", fontWeight: 700, color: "var(--ink)" }} />
-                </label>
-              </div>
-              <button className={"switch" + (prefs.price_alert_on ? " on" : "")} role="switch" aria-checked={prefs.price_alert_on} aria-labelledby="l1" onClick={() => setPrefs({ price_alert_on: !prefs.price_alert_on })}><span className="cap" /></button>
-            </li>
-            <li style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 56 }}>
-              <div style={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
-                <span id="l2" style={{ fontSize: 16, fontWeight: 700 }}>Weekly spend report</span>
-                <span style={{ fontSize: 13, color: "var(--ink-2)" }}>Sunday evening</span>
-              </div>
-              <button className={"switch" + (prefs.weekly_report_on ? " on" : "")} role="switch" aria-checked={prefs.weekly_report_on} aria-labelledby="l2" onClick={() => setPrefs({ weekly_report_on: !prefs.weekly_report_on })}><span className="cap" /></button>
-            </li>
-          </ul>
-        </Section>
+        <Alerts />
 
         <InviteSection />
 
-        <button className="pillbtn" onClick={() => supabase.auth.signOut()}><SignOut size={18} />Sign out</button>
+        <button className="pillbtn" onClick={async () => { await disablePush().catch(() => {}); await supabase.auth.signOut(); }}><SignOut size={18} />Sign out</button>
       </main>
 
       {editing && <VehicleSheet vehicle={editing === "new" ? null : editing} onClose={async (changed) => { setEditing(null); if (changed) await reloadVehicles(); }} />}

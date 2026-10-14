@@ -42,6 +42,8 @@ export type Fillup = {
 export type Prefs = {
   monthly_budget: number; weekly_budget: number; vehicle_id: string | null; search_radius_mi: 2 | 5 | 10 | 20; preferred_grade: Grade; price_alert: number | null;
   price_alert_on: boolean; weekly_report_on: boolean;
+  // Where the price drop alert watches, and the time zone for the Sunday report.
+  alert_lat: number | null; alert_lng: number | null; alert_label: string | null; tz: string | null;
 };
 
 /** Calls a server function with the signed-in user's token. */
