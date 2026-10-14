@@ -28,7 +28,12 @@ export type Station = {
   distance_mi: number;
   prices: Partial<Record<Grade, PriceEntry>>;
 };
-export type Vehicle = { id: string; name: string; tank_gal: number | null; grade: Grade; plate: string | null; created_at: string };
+export type Vehicle = {
+  id: string; name: string; tank_gal: number | null; grade: Grade; plate: string | null; created_at: string;
+  // Official EPA data (null when the vehicle was typed in by hand).
+  year: number | null; make: string | null; model: string | null; epa_id: number | null; engine: string | null;
+  mpg_combined: number | null; mpg_city: number | null; mpg_highway: number | null; epa_fuel: string | null;
+};
 export type Fillup = {
   id: string; vehicle_id: string | null; station_name: string | null; place_id: string | null; grade: Grade;
   gallons: number; price_per_gal: number; total: number; odometer: number | null; photo_path: string | null; filled_at: string;

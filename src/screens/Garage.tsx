@@ -3,6 +3,7 @@ import { CarProfile, PencilSimple, Plus, ShareNetwork, SignOut, Warning } from "
 import { useStore } from "../lib/store";
 import { Grade, GRADES, supabase, Vehicle } from "../lib/supabase";
 import { Bar, Section, TabDock } from "../components/TabDock";
+import { EpaVehicle, VehiclePicker } from "../components/VehiclePicker";
 
 export default function Garage() {
   const { vehicles, fillups, prefs, setPrefs, reloadVehicles } = useStore();
@@ -38,7 +39,7 @@ export default function Garage() {
             <div className="dome" style={{ width: 64, height: 64, borderRadius: 32, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", color: "#C21F1A" }}><CarProfile size={30} weight="fill" /></div>
             <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flexGrow: 1 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>{v.name}</h2>
-              <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{[v.tank_gal ? `${v.tank_gal} gal tank` : null, GRADES.find((g) => g.id === v.grade)?.name].filter(Boolean).join(" · ")}</span>
+              <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{[v.mpg_combined ? `${Math.round(v.mpg_combined)} MPG (EPA)` : null, v.tank_gal ? `${v.tank_gal} gal tank` : null, GRADES.find((g) => g.id === v.grade)?.name].filter(Boolean).join(" · ")}</span>
               <span className="tnum" style={{ fontSize: 14, color: "var(--ink-2)" }}>{[stats?.lastOdo ? `${stats.lastOdo.toLocaleString()} mi` : null, v.plate].filter(Boolean).join(" · ") || "Add your odometer when you scan"}</span>
             </div>
             <button className="nb xs" aria-label={`Edit ${v.name}`} onClick={() => setEditing(v)}><PencilSimple size={18} /></button>
@@ -71,7 +72,11 @@ export default function Garage() {
                 <span>Your last tank was {stats.drop.toFixed(1)} MPG below your average. Check tire pressure and the air filter.</span>
               </p>
             )}
-            {!stats?.mpg && <p className="hint">MPG shows up after two fill-ups with odometer readings.</p>}
+            {stats?.mpg && v.mpg_combined && (() => {
+              const pct = Math.round(((stats.mpg - v.mpg_combined) / v.mpg_combined) * 100);
+              return <p className="hint">{Math.abs(pct) < 3 ? `Right on the EPA rating of ${Math.round(v.mpg_combined)} MPG.` : `${Math.abs(pct)}% ${pct < 0 ? "below" : "above"} the EPA rating of ${Math.round(v.mpg_combined)} MPG${pct < 0 ? ". Short trips, cold weather, idling and low tires all pull it down." : "."}`}</p>;
+            })()}
+            {!stats?.mpg && <p className="hint">MPG shows up after two fill-ups with odometer readings.{v.mpg_combined ? ` Until then, the app uses the EPA rating of ${Math.round(v.mpg_combined)} MPG.` : ""}</p>}
           </Section>
         )}
 
@@ -114,11 +119,28 @@ function VehicleSheet({ vehicle, onClose }: { vehicle: Vehicle | null; onClose: 
   const [grade, setGrade] = useState<Grade>(vehicle?.grade ?? "87");
   const [plate, setPlate] = useState(vehicle?.plate ?? "");
   const [err, setErr] = useState("");
+  const [epa, setEpa] = useState<EpaVehicle | null>(null);
+  const [changeCar, setChangeCar] = useState(!vehicle?.epa_id);
+  const shown = epa ?? (vehicle?.epa_id ? vehicle : null);
+
+  function pick(e: EpaVehicle) {
+    setEpa(e);
+    setChangeCar(false);
+    if (!name.trim() || (vehicle && name === vehicle.name && !vehicle.epa_id) || !vehicle) setName(`${e.year} ${e.make} ${e.model}`);
+    // Default the usual grade to what the EPA lists; octane advice for your altitude comes later.
+    const f = (e.epa_fuel ?? "").toLowerCase();
+    if (f.includes("premium")) setGrade("93"); else if (f.includes("midgrade")) setGrade("89"); else if (f.includes("diesel")) setGrade("D"); else if (f.includes("regular")) setGrade("87");
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setErr("Give your vehicle a name, like 2019 Toyota Tacoma."); return; }
-    const row = { name: name.trim(), tank_gal: tank ? parseFloat(tank) : null, grade, plate: plate.trim() || null };
+    const t = tank ? parseFloat(tank) : null;
+    if (t != null && !(t >= 3 && t <= 60)) { setErr("Tank size should be between 3 and 60 gallons. It's in your owner's manual."); return; }
+    const row = {
+      name: name.trim(), tank_gal: t, grade, plate: plate.trim() || null,
+      ...(epa ? { year: epa.year, make: epa.make, model: epa.model, epa_id: epa.epa_id, engine: epa.engine, mpg_combined: epa.mpg_combined, mpg_city: epa.mpg_city, mpg_highway: epa.mpg_highway, epa_fuel: epa.epa_fuel } : {}),
+    };
     const { error } = vehicle ? await supabase.from("vehicles").update(row).eq("id", vehicle.id) : await supabase.from("vehicles").insert(row);
     if (error) setErr("Couldn't save. Try again."); else onClose(true);
   }
@@ -134,10 +156,23 @@ function VehicleSheet({ vehicle, onClose }: { vehicle: Vehicle | null; onClose: 
       <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={submit} aria-labelledby="vs">
         <div>
           <h2 id="vs" className="h2">{vehicle ? "Edit vehicle" : "Add a vehicle"}</h2>
-          <p className="hint">Tank size helps the Worth the drive? calculator.</p>
+          <p className="hint">Pick your car to get its official EPA mileage. FillSmart uses it to work out what each fill-up and detour really costs you.</p>
         </div>
-        <div className="sunk field"><label htmlFor="vn">Name</label><input id="vn" value={name} onChange={(e) => setName(e.target.value)} placeholder="2019 Toyota Tacoma" autoFocus /></div>
-        <div className="sunk field"><label htmlFor="vt">Tank size (gal)</label><input id="vt" inputMode="decimal" value={tank} onChange={(e) => setTank(e.target.value)} placeholder="21" /></div>
+        {changeCar ? <VehiclePicker onPick={pick} /> : shown && (
+          <div className="raised-sm" style={{ borderRadius: 18, padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontWeight: 800 }}>{shown.year} {shown.make} {shown.model}</span>
+              <span style={{ fontSize: 13, color: "var(--ink-2)" }}>{shown.engine}</span>
+              <span className="tnum" style={{ fontSize: 13, color: "var(--ink-2)" }}>
+                {shown.mpg_combined ? `${Math.round(shown.mpg_combined)} MPG combined · ${Math.round(shown.mpg_city ?? 0)} city · ${Math.round(shown.mpg_highway ?? 0)} highway` : "No EPA mileage listed"}
+              </span>
+              <span style={{ fontSize: 12, color: "var(--ink-2)" }}>EPA fuel: {shown.epa_fuel ?? "not listed"}. Source: fueleconomy.gov</span>
+            </div>
+            <button type="button" className="linkbtn" onClick={() => setChangeCar(true)} style={{ flex: "none" }}>Change</button>
+          </div>
+        )}
+        <div className="sunk field"><label htmlFor="vn">Name</label><input id="vn" value={name} onChange={(e) => setName(e.target.value)} placeholder="2019 Toyota Tacoma" /></div>
+        <div className="sunk field"><label htmlFor="vt">Tank size (gal)</label><input id="vt" inputMode="decimal" value={tank} onChange={(e) => setTank(e.target.value)} placeholder="from owner's manual" /></div>
         <div className="sunk field">
           <label htmlFor="vg">Usual grade</label>
           <select id="vg" value={grade} onChange={(e) => setGrade(e.target.value as Grade)}>{GRADES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>

@@ -68,7 +68,8 @@ export function StoreProvider({ userId, children }: { userId: string; children: 
 
   const reloadVehicles = useCallback(async () => {
     const { data } = await supabase.from("vehicles").select("*").order("created_at");
-    setVehicles((data ?? []).map((v) => ({ ...v, tank_gal: v.tank_gal == null ? null : Number(v.tank_gal) })));
+    const n = (x: unknown) => (x == null ? null : Number(x));
+    setVehicles((data ?? []).map((v) => ({ ...v, tank_gal: n(v.tank_gal), mpg_combined: n(v.mpg_combined), mpg_city: n(v.mpg_city), mpg_highway: n(v.mpg_highway) })));
   }, []);
 
   const reloadFillups = useCallback(async () => {
