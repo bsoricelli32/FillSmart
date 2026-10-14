@@ -28,7 +28,7 @@ type Store = {
 const Ctx = createContext<Store | null>(null);
 export const useStore = () => useContext(Ctx)!;
 
-const DEFAULT_PREFS: Prefs = { monthly_budget: 220, weekly_budget: 50, search_radius_mi: 5, preferred_grade: "87", price_alert: 3.1, price_alert_on: true, weekly_report_on: true };
+const DEFAULT_PREFS: Prefs = { monthly_budget: 220, weekly_budget: 50, vehicle_id: null, search_radius_mi: 5, preferred_grade: "87", price_alert: 3.1, price_alert_on: true, weekly_report_on: true };
 
 export function StoreProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const [prefs, setPrefsState] = useState<Prefs>(DEFAULT_PREFS);

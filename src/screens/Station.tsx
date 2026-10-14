@@ -2,23 +2,35 @@ import { FormEvent, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CaretLeft, Minus, NavigationArrow, Plus } from "@phosphor-icons/react";
 import { useStore, priceFor } from "../lib/store";
-import { Grade, GRADES, supabase } from "../lib/supabase";
+import { Grade, GRADES, Station as StationT, supabase } from "../lib/supabase";
 import { sourceLabel, timeAgo } from "../lib/util";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
+import { activeVehicle, effectiveMpg, ROAD_FACTOR, trueFillCost, usualFill } from "../lib/vehicle";
 
 export default function Station() {
   const { placeId } = useParams();
-  const { stations, searched, prefs, vehicles, reloadStations } = useStore();
+  const { stations, searched, prefs, vehicles, fillups, reloadStations } = useStore();
+  const car = activeVehicle(vehicles, prefs);
+  const myMpg = effectiveMpg(fillups, car);
+  const myFill = usualFill(fillups, car);
   const id = decodeURIComponent(placeId ?? "");
   const s = stations.find((x) => x.place_id === id) ?? searched.find((x) => x.place_id === id);
   const grade = prefs.preferred_grade;
-  const [gal, setGal] = useState(() => Math.round((vehicles[0]?.tank_gal ?? 14) * 0.8));
+  const [gal, setGal] = useState(() => Math.round(myFill?.gal ?? 10));
   const [reporting, setReporting] = useState(false);
 
-  // Compare against the closest other station that has a price for this grade.
-  const nearest = useMemo(() => {
-    return stations.filter((x) => x.place_id !== s?.place_id && priceFor(x, grade) != null).sort((a, b) => a.distance_mi - b.distance_mi)[0];
-  }, [stations, s, grade]);
+  const mpg = myMpg?.mpg ?? 25; // 25 MPG is a typical US car when no vehicle is set
+  // Compare with the best other option nearby: lowest total for this fill, counting the drive there and back.
+  const best = useMemo(() => {
+    let pick: { st: StationT; total: number } | null = null;
+    for (const x of stations) {
+      const p = priceFor(x, grade);
+      if (x.place_id === s?.place_id || p == null) continue;
+      const total = trueFillCost(x.distance_mi, p, gal, mpg);
+      if (!pick || total < pick.total) pick = { st: x, total };
+    }
+    return pick;
+  }, [stations, s, grade, gal, mpg]);
 
   if (!s) {
     return (
@@ -31,12 +43,8 @@ export default function Station() {
   }
 
   const here = priceFor(s, grade);
-  const there = nearest ? priceFor(nearest, grade)! : undefined;
-  const extraMiles = nearest ? Math.max(0, (s.distance_mi - nearest.distance_mi) * 2) : 0;
-  const mpg = 22;
-  const save = here != null && there != null ? (there - here) * gal : null;
-  const driveCost = here != null ? (extraMiles / mpg) * here : 0;
-  const net = save != null ? save - driveCost : null;
+  const thisTotal = here != null ? trueFillCost(s.distance_mi, here, gal, mpg) : null;
+  const net = thisTotal != null && best ? best.total - thisTotal : null; // > 0 means this station is cheaper overall
   const directions = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&destination_place_id=${encodeURIComponent(s.place_id)}`;
   const newest = Object.values(s.prices).sort((a, b) => (b!.updated_at > a!.updated_at ? 1 : -1))[0];
 
@@ -60,21 +68,31 @@ export default function Station() {
               </div>
             ))}
           </dl>
+          {here != null && myFill && (
+            <p className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>
+              Your usual fill here: ${(here * myFill.gal).toFixed(2)}
+              <span style={{ fontWeight: 500, color: "var(--ink-2)" }}> · {myFill.gal.toFixed(1)} gal{myFill.source === "tank" ? ", 3/4 of your tank" : ", from your recent fills"}</span>
+            </p>
+          )}
         </Section>
 
-        {here != null && there != null && nearest && nearest.distance_mi < s.distance_mi && here < there && (
-          <Section id="wtd" title="Worth the drive?" hint={`Compared with ${nearest.name}, ${nearest.distance_mi} mi away. Set how much you'll pump.`}>
+        {net != null && best && thisTotal != null && (
+          <Section id="wtd" title="Worth the drive?" hint={`Compared with your best other option nearby, counting the gas to get there and back. ${myFill?.source === "history" ? "Starts at your usual fill" : "Set how much you'll pump"}.`}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <button className="nb" aria-label="Fewer gallons" onClick={() => setGal(Math.max(2, gal - 2))}><Minus size={22} /></button>
+              <button className="nb" aria-label="Fewer gallons" onClick={() => setGal(Math.max(1, gal - 1))}><Minus size={22} /></button>
               <div role="status" style={{ textAlign: "center", display: "flex", flexDirection: "column" }}>
                 <span className="tnum" style={{ fontSize: 14, fontWeight: 800 }}>{gal} gallons</span>
-                <span style={{ fontSize: 17, fontWeight: 800, color: net! > 0 ? "#1F7A4A" : "#A8170F" }}>
-                  {net! > 0 ? `Worth it, $${net!.toFixed(2)} ahead` : `Skip it, $${Math.abs(net!).toFixed(2)} behind`}
+                <span style={{ fontSize: 17, fontWeight: 800, color: net >= 0.005 ? "#1F7A4A" : "#A8170F" }}>
+                  {net >= 0.005 ? `Best deal, $${net.toFixed(2)} less` : `${best.st.name.split(" ").slice(0, 2).join(" ")} saves $${Math.abs(net).toFixed(2)}`}
                 </span>
-                <span className="tnum" style={{ fontSize: 13, color: "var(--ink-2)" }}>Save ${Math.max(0, save!).toFixed(2)} · extra drive ${driveCost.toFixed(2)}</span>
+                <span className="tnum" style={{ fontSize: 13, color: "var(--ink-2)" }}>Here ${thisTotal.toFixed(2)} · {best.st.name.length > 18 ? best.st.name.slice(0, 17) + "…" : best.st.name} ${best.total.toFixed(2)}</span>
               </div>
-              <button className="nb" aria-label="More gallons" onClick={() => setGal(Math.min(40, gal + 2))}><Plus size={22} /></button>
+              <button className="nb" aria-label="More gallons" onClick={() => setGal(Math.min(40, gal + 1))}><Plus size={22} /></button>
             </div>
+            <p className="hint">
+              {car && myMpg ? `For your ${car.name} at ${myMpg.mpg.toFixed(1)} MPG (${myMpg.source === "measured" ? "measured from your fill-ups" : "EPA rating"})` : "For a typical 25 MPG car. Add your vehicle in Garage for your real numbers"}
+              {`. Here is ${(s.distance_mi * 2 * ROAD_FACTOR).toFixed(1)} road miles there and back, ${best.st.name} ${(best.st.distance_mi * 2 * ROAD_FACTOR).toFixed(1)}.`}
+            </p>
           </Section>
         )}
 

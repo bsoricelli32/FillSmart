@@ -6,9 +6,10 @@ import { callFn, Grade, GRADES, gradeName, Station } from "../lib/supabase";
 import { timeAgo, sourceLabel } from "../lib/util";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
 import { PlaceSheet } from "../components/PlaceSheet";
+import { activeVehicle, effectiveMpg, trueFillCost, usualFill } from "../lib/vehicle";
 
 export default function Prices() {
-  const { prefs, setPrefs, stations, stationsLoading, stationsError, googleConfigured, reloadStations, loc, setSearched } = useStore();
+  const { prefs, setPrefs, stations, stationsLoading, stationsError, googleConfigured, reloadStations, loc, setSearched, vehicles, fillups } = useStore();
   const grade = prefs.preferred_grade;
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"price" | "distance">("price");
@@ -35,17 +36,27 @@ export default function Prices() {
     return () => { live = false; window.clearTimeout(t); };
   }, [term, loc.lat, loc.lng, setSearched]);
 
+  // With your car known, "cheapest" means the lowest total for your usual fill plus the drive there and back.
+  const car = activeVehicle(vehicles, prefs);
+  const mpg = effectiveMpg(fillups, car);
+  const fill = usualFill(fillups, car);
+  const total = (s: Station) => { const p = priceFor(s, grade); return p != null && mpg && fill ? trueFillCost(s.distance_mi, p, fill.gal, mpg.mpg) : null; };
+
   const list = useMemo(() => {
     const f = stations.filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()) || (s.address ?? "").toLowerCase().includes(q.toLowerCase()));
     return [...f].sort((a, b) => {
       if (sortBy === "distance") return a.distance_mi - b.distance_mi;
+      const ta = total(a), tb = total(b);
+      if (ta != null && tb != null) return ta - tb;
       const pa = priceFor(a, grade), pb = priceFor(b, grade);
       if (pa == null && pb == null) return a.distance_mi - b.distance_mi;
       if (pa == null) return 1;
       if (pb == null) return -1;
       return pa - pb || a.distance_mi - b.distance_mi;
     });
-  }, [stations, q, sortBy, grade]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stations, q, sortBy, grade, mpg?.mpg, fill?.gal]);
+  const bestTotal = sortBy === "price" && list.length && total(list[0]) != null ? list[0] : null;
 
   const cheapest = useMemo(() => {
     const priced = stations.filter((s) => priceFor(s, grade) != null);
@@ -111,7 +122,9 @@ export default function Prices() {
         <Section
           id="near"
           title={`${gradeName(grade)} near ${loc.manual ? loc.label : "you"}`}
-          hint={`${sortBy === "price" ? "Cheapest" : "Closest"} first within ${prefs.search_radius_mi} mi. Tap a station for all prices and directions.`}
+          hint={sortBy === "distance" ? `Closest first within ${prefs.search_radius_mi} mi. Tap a station for all prices and directions.`
+            : car && mpg && fill ? `Cheapest for your ${car.name} first. Total is your usual ${fill.gal.toFixed(1)} gal plus the gas to drive there and back.`
+            : `Cheapest first within ${prefs.search_radius_mi} mi. Add your car in Garage to rank by what a fill really costs you.`}
           right={<button className="nb xs" aria-label="Refresh prices" onClick={() => reloadStations(true)}>{stationsLoading ? <span className="spin" /> : <ArrowsClockwise size={18} />}</button>}
         >
           {stationsError && <p className="err">{stationsError === "network" ? "Can't reach the server. Check your connection." : "Couldn't load prices. Try refresh."}</p>}
@@ -124,7 +137,7 @@ export default function Prices() {
           {term && list.length === 0 && !stationsError && <p className="hint">No nearby stations match "{term}".</p>}
           <ol style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {list.map((s) => (
-              <li key={s.place_id}><StationRow s={s} grade={grade} best={!!cheapest && s.place_id === cheapest.place_id && sortBy === "price"} /></li>
+              <li key={s.place_id}><StationRow s={s} grade={grade} total={total(s)} best={bestTotal ? s.place_id === bestTotal.place_id : !!cheapest && s.place_id === cheapest.place_id && sortBy === "price"} /></li>
             ))}
           </ol>
         </Section>
@@ -139,7 +152,7 @@ export default function Prices() {
             {findErr && <p className="err">Search isn't working right now. Try again.</p>}
             {!finding && !findErr && found.length === 0 && <p className="hint">No stations found.</p>}
             <ol style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {found.map((s) => <li key={s.place_id}><StationRow s={s} grade={grade} place /></li>)}
+              {found.map((s) => <li key={s.place_id}><StationRow s={s} grade={grade} total={total(s)} place /></li>)}
             </ol>
           </Section>
         )}
@@ -161,7 +174,7 @@ export default function Prices() {
   );
 }
 
-function StationRow({ s, grade, best = false, place = false }: { s: Station; grade: Grade; best?: boolean; place?: boolean }) {
+function StationRow({ s, grade, total, best = false, place = false }: { s: Station; grade: Grade; total?: number | null; best?: boolean; place?: boolean }) {
   const p = s.prices[grade];
   // For search results, show the town so far-away matches are clear.
   const parts = (s.address ?? "").split(",").map((x) => x.trim()).filter((x) => x && x !== "USA");
@@ -173,7 +186,12 @@ function StationRow({ s, grade, best = false, place = false }: { s: Station; gra
         <span style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
         <span style={{ fontSize: 13, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{where}{p ? ` · ${timeAgo(p.updated_at)} · ${sourceLabel(p.source)}` : " · no price yet"}</span>
       </div>
-      {p ? <PumpPrice price={p.price} size={18} /> : <span style={{ fontSize: 14, color: "var(--ink-2)" }}>--</span>}
+      {p ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flex: "none" }}>
+          <PumpPrice price={p.price} size={18} />
+          {total != null && <span className="tnum" style={{ fontSize: 12, color: "var(--ink-2)" }}>${total.toFixed(2)} total</span>}
+        </div>
+      ) : <span style={{ fontSize: 14, color: "var(--ink-2)" }}>--</span>}
       <span className={"nb xs" + (best ? " accent" : "")} aria-hidden><CaretRight size={18} /></span>
     </Link>
   );

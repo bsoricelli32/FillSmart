@@ -4,12 +4,16 @@ import { useStore } from "../lib/store";
 import { Grade, GRADES, supabase, Vehicle } from "../lib/supabase";
 import { Bar, Section, TabDock } from "../components/TabDock";
 import { EpaVehicle, VehiclePicker } from "../components/VehiclePicker";
+import { tankTooSmall } from "../lib/vehicle";
 
 export default function Garage() {
   const { vehicles, fillups, prefs, setPrefs, reloadVehicles } = useStore();
   const [editing, setEditing] = useState<Vehicle | "new" | null>(null);
-  const [vi, setVi] = useState(0);
+  // The vehicle shown here is the one the whole app uses for fill costs and detours.
+  const vi = Math.max(0, vehicles.findIndex((x) => x.id === prefs.vehicle_id));
+  const setVi = (i: number) => setPrefs({ vehicle_id: vehicles[i]?.id ?? null });
   const v = vehicles[vi] ?? vehicles[0];
+  const bigFill = v ? tankTooSmall(fillups, v) : null;
 
   const stats = useMemo(() => {
     if (!v) return null;
@@ -52,11 +56,18 @@ export default function Garage() {
             </div>
           </div>
         )}
+        {bigFill && v && (
+          <p role="note" style={{ margin: "6px 20px 0", display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, color: "#7A4B00" }}>
+            <Warning size={18} weight="fill" style={{ flex: "none", marginTop: 1 }} />
+            <span>You pumped {bigFill.toFixed(1)} gal in one fill, but the tank is set to {v.tank_gal} gal. Check the size in your owner's manual and tap the pencil to fix it.</span>
+          </p>
+        )}
         {vehicles.length > 1 && (
-          <div className="nseg" role="group" aria-label="Choose vehicle" style={{ margin: "6px 20px 0", overflowX: "auto" }}>
+          <div className="nseg" role="group" aria-label="Vehicle used for prices" style={{ margin: "6px 20px 0", overflowX: "auto" }}>
             {vehicles.map((x, i) => <button key={x.id} className={i === vi ? "on" : ""} aria-pressed={i === vi} onClick={() => setVi(i)}>{x.name}</button>)}
           </div>
         )}
+        {vehicles.length > 1 && <p className="hint" style={{ margin: "6px 20px 0" }}>Fill costs and detours across the app use the vehicle picked here.</p>}
       </div>
 
       <main className="main" style={{ paddingTop: 18 }}>
