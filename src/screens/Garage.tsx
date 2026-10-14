@@ -5,6 +5,7 @@ import { Grade, GRADES, supabase, Vehicle } from "../lib/supabase";
 import { Bar, Section, TabDock } from "../components/TabDock";
 import { EpaVehicle, VehiclePicker } from "../components/VehiclePicker";
 import { tankTooSmall } from "../lib/vehicle";
+import { FuelAdvice } from "../components/FuelAdvice";
 
 export default function Garage() {
   const { vehicles, fillups, prefs, setPrefs, reloadVehicles } = useStore();
@@ -90,6 +91,8 @@ export default function Garage() {
             {!stats?.mpg && <p className="hint">MPG shows up after two fill-ups with odometer readings.{v.mpg_combined ? ` Until then, the app uses the EPA rating of ${Math.round(v.mpg_combined)} MPG.` : ""}</p>}
           </Section>
         )}
+
+        {v && <FuelAdvice v={v} />}
 
         <Section id="nt" title="Notifications" hint="FillSmart saves these now. Alerts start arriving in a later update.">
           <ul>

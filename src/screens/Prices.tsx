@@ -7,6 +7,7 @@ import { timeAgo, sourceLabel } from "../lib/util";
 import { Bar, PumpPrice, Section, TabDock } from "../components/TabDock";
 import { PlaceSheet } from "../components/PlaceSheet";
 import { activeVehicle, effectiveMpg, trueFillCost, usualFill } from "../lib/vehicle";
+import { gradeAbove, gradeLabel, octaneAdvice } from "../lib/octane";
 
 export default function Prices() {
   const { prefs, setPrefs, stations, stationsLoading, stationsError, googleConfigured, reloadStations, loc, setSearched, vehicles, fillups } = useStore();
@@ -101,7 +102,12 @@ export default function Prices() {
       </div>
 
       <main className="main" style={{ paddingTop: 18 }}>
-        <Section id="gr" title="Grade" hint="Tap a grade to update every price.">
+        <Section id="gr" title="Grade" hint={(() => {
+          const need = car ? octaneAdvice(car)?.need : null;
+          return car && need && !octaneAdvice(car)?.question && gradeAbove(grade, need)
+            ? `Your ${car.name} only needs ${gradeLabel(need)}. Tap it to see what you'd save.`
+            : "Tap a grade to update every price.";
+        })()}>
           <div role="group" aria-label="Fuel grade" style={{ display: "flex", gap: 12 }}>
             {GRADES.map((g) => (
               <button key={g.id} className={"grade" + (g.id === grade ? " on" : "")} aria-pressed={g.id === grade} onClick={() => setPrefs({ preferred_grade: g.id })}>

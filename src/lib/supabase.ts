@@ -33,6 +33,7 @@ export type Vehicle = {
   // Official EPA data (null when the vehicle was typed in by hand).
   year: number | null; make: string | null; model: string | null; epa_id: number | null; engine: string | null;
   mpg_combined: number | null; mpg_city: number | null; mpg_highway: number | null; epa_fuel: string | null;
+  fuel_req: "85_ok" | "87_min" | "91_required" | "91_recommended" | null; // from the owner's manual / fuel door
 };
 export type Fillup = {
   id: string; vehicle_id: string | null; station_name: string | null; place_id: string | null; grade: Grade;
