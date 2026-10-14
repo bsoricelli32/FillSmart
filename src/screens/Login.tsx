@@ -13,7 +13,9 @@ function readInvite(): string | null {
 
 export default function Login() {
   const [invite] = useState(readInvite);
-  const [mode, setMode] = useState<"in" | "up">(invite ? "up" : "in");
+  // Shared links (?join, or older ?invite=...) open on Create account.
+  const [joining] = useState(() => !!invite || new URLSearchParams(window.location.search).has("join"));
+  const [mode, setMode] = useState<"in" | "up">(joining ? "up" : "in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,8 +31,7 @@ export default function Login() {
     } else {
       const { data, error } = await supabase.auth.signUp({ email: addr, password, options: { emailRedirectTo: window.location.origin, data: invite ? { invite } : undefined } });
       if (error) {
-        const notInvited = /database|invited/i.test(error.message);
-        setMsg({ kind: "err", text: !notInvited ? error.message : invite ? "That invite link isn't active anymore. Ask Bennett for a new one." : "You need an invite link to create an account. Ask Bennett for one." });
+        setMsg({ kind: "err", text: /already registered/i.test(error.message) ? "That email already has an account. Sign in instead." : error.message });
       } else if (!data.session) {
         setMsg({ kind: "ok", text: "Check your email and tap the confirm link, then come back here and sign in." });
         setMode("in");
@@ -44,9 +45,9 @@ export default function Login() {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 28 }}>
         <div className="nb lg accent" aria-hidden><GasPump size={30} weight="fill" /></div>
         <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.02em" }}>FillSmart</h1>
-        <p className="hint" style={{ textAlign: "center" }}>{invite
-          ? "You're invited. Create your account here, then add FillSmart to your Home Screen."
-          : "Local gas prices, pump scans and fuel spend. Invite only for now."}</p>
+        <p className="hint" style={{ textAlign: "center" }}>{joining
+          ? "Create your account here, then add FillSmart to your Home Screen."
+          : "Local gas prices, pump scans and fuel spend. Free to use."}</p>
       </div>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="sunk field">

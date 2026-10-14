@@ -158,11 +158,12 @@ function InviteSection() {
   const [link, setLink] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
-    supabase.rpc("invite_code").then(({ data }) => { if (typeof data === "string" && data) setLink(`${window.location.origin}/?invite=${data}`); });
+    // Sign-up is open, so the link is just the app with a hint to open on Create account.
+    setLink(`${window.location.origin}/?join`);
   }, []);
   async function share() {
     if (!link) return;
-    const text = "I'm using FillSmart to find cheap gas nearby. Here's your invite:";
+    const text = "I'm using FillSmart to find cheap gas nearby. Try it:";
     try {
       if (navigator.share) { await navigator.share({ title: "FillSmart invite", text, url: link }); return; }
       await navigator.clipboard.writeText(link);
@@ -170,8 +171,8 @@ function InviteSection() {
     } catch { /* share sheet closed */ }
   }
   return (
-    <Section id="inv" title="Invite a friend" hint="Text this link. Anyone who opens it can create an account.">
-      <button className="pillbtn accent" onClick={share} disabled={!link}><ShareNetwork size={18} />{link ? "Share invite link" : "Loading link"}</button>
+    <Section id="inv" title="Share FillSmart" hint="Text the link to anyone. They can create an account right away.">
+      <button className="pillbtn accent" onClick={share} disabled={!link}><ShareNetwork size={18} />Share link</button>
       {note && <p className="hint" role="status">{note}</p>}
     </Section>
   );
