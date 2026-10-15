@@ -56,6 +56,12 @@ Run this in the Supabase SQL editor, then send them the link:
 insert into public.allowlist (email) values ('friend@example.com');
 ```
 
+## Shared Supabase project
+
+The Supabase project also hosts other, unrelated projects. Run `select * from umbrella.projects;` in the SQL
+editor to see which project owns each schema, bucket, cron job and edge function before changing anything.
+See `CLAUDE.md`.
+
 ## Run locally
 
 ```bash
